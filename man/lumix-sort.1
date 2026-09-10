@@ -158,7 +158,10 @@ Panasonic, Leica
 .BR RW2 ", " RAW ", " RWL
 .TP
 Canon
-.B CR2
+.BR CR2 ", " CR3 ", " CRM
+.TP
+Fujifilm
+.B RAF
 .TP
 Nikon
 .BR NEF ", " NRW
@@ -186,21 +189,24 @@ including 4K and 6K PHOTO clips.
 .PP
 The extension decides only which files are picked up; which parser runs is
 decided by the file's leading bytes, so a mislabelled file still reads
-correctly. Every raw above is a TIFF container, so one parser reads them all;
-Olympus and Panasonic simply stamp a different signature in the header.
-Anything else on the card, including AVCHD
+correctly. Most of those raws are a TIFF container and one parser reads them
+all; Olympus and Panasonic simply stamp a different signature in the header,
+and BigTIFF widens every count and offset from four bytes to eight. Three keep
+their EXIF elsewhere and each is found and then handed to that same parser:
+Canon CR3 and CRM bury a TIFF block in
+.IR moov/uuid/CMT2 ,
+HEIF stores one as an item the
+.I meta
+box points at, and Fujifilm RAF gives the offset of a complete JPEG in bytes
+84\-87 of its header. Anything else on the card, including AVCHD
 .B .CPI
 sidecars, is left untouched.
 .PP
-Not read yet: Canon
-.BR CR3 " and " CRM ,
-Fujifilm
-.BR RAF ,
-and the EXIF inside HEIF
-.RB ( HIF ", " HEIC ).
-HEIF files are still picked up, so they land in
-.I undated/
-rather than being passed over in silence; CR3 and RAF are not picked up at all.
+Not read yet: AVCHD clips
+.RB ( MTS ", " M2TS )
+and HLG photos
+.RB ( HSP ).
+Both record no date this can read.
 .SH HOW THE DATE IS FOUND
 The first of these that answers wins.
 .IP 1. 4
@@ -211,25 +217,37 @@ for every still and every raw listed above.
 .B The JPEG embedded in a raw
 (tag 0x2e), for raws that carry the date nowhere else.
 .IP 3. 4
-.B moov/mvhd
-in MP4 and MOV, read verbatim. The specification calls that field UTC, but
-Panasonic writes the clock the camera is set to, so no conversion is applied.
-Video is therefore filed exactly as stills are, by the camera's own clock, and
-neither depends on the timezone of the machine doing the sorting. Canon, Nikon
-and Apple do often write UTC in that field, so video from those cameras is
-currently filed by a shifted clock.
+.BR "A video clock that names its own timezone" :
+the
+.B \[co]day
+user data Canon and Nikon write, Apple's
+.IR com.apple.quicktime.creationdate ,
+or the EXIF in the thumbnail Canon stores beside the clip. The local time is
+taken as the camera's own clock and the offset discarded, that being the whole
+point: it is what the photographer saw on the back of the camera.
 .IP 4. 4
-.BR "A sibling frame" :
-the JPEG beside a raw of the same shot, or the THM beside a Canon AVI, matched
-on folder and file name.
+.B moov/mvhd
+read verbatim, when the clip named no zone. The specification calls that field
+UTC, but Panasonic writes the clock the camera is set to, so no conversion is
+applied. Video is therefore filed exactly as stills are, by the camera's own
+clock, and neither depends on the timezone of the machine doing the sorting.
 .IP 5. 4
+.BR "A sibling frame" :
+the JPEG beside a raw of the same shot, or the THM beside a Canon AVI. Matched
+on folder and file name, and failing that on file name alone, but only when
+exactly one shot on the whole card goes by that name \- so a dual\-slot body
+that split raw and JPEG across two cards still pairs up, while two cameras that
+both wrote
+.I DSC_0001
+do not.
+.IP 6. 4
 .BR "The file's own timestamp" ,
-for AVCHD clips, HLG photos and HEIF stills, which hold no date this reads.
-Days containing such files are marked
+for AVCHD clips and HLG photos, which hold no date this reads. Days containing
+such files are marked
 .B ~
 in the summary.
 .PP
-Step 5 is only meaningful if whatever copied the card preserved the filesystem
+Step 6 is only meaningful if whatever copied the card preserved the filesystem
 dates.
 .BR cp (1)
 without
@@ -315,7 +333,7 @@ Keep a shoot that ran past midnight in the day it began.
 .SH ENVIRONMENT
 .TP
 .B TZ
-Affects only files dated by step 5 above, whose filesystem dates the operating
+Affects only files dated by step 6 above, whose filesystem dates the operating
 system resolves in the local zone. Every file that records its own date, still
 or video, is unaffected.
 .SH SEE ALSO

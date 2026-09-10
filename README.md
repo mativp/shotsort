@@ -111,9 +111,9 @@ drop `-d` and the day folders appear inside the source folder instead.
 ### Files that record no date
 
 Stills and video are both filed by the clock the camera was set to, so nothing
-here applies to them. AVCHD clips (`.MTS`), HLG photos (`.HSP`) and HEIF stills
-(`.HIF`, `.HEIC`) are the exception: no date this reads is stored inside them,
-leaving only the date the filesystem keeps. Read [What it reads](#what-it-reads) for why that date is
+here applies to them. AVCHD clips (`.MTS`, `.M2TS`) and HLG photos (`.HSP`) are
+the exception: no date this reads is stored inside them, leaving only the date
+the filesystem keeps. Read [What it reads](#what-it-reads) for why that date is
 sometimes worthless and how `lumix-sort` tells the difference.
 
 | | |
@@ -177,33 +177,44 @@ duplicate rather than a clash, so they collapse into one file.
 ## What it reads
 
 Stills: JPEG, MPO, TIFF, HSP, HIF, HEIC, and Canon THM sidecars.
-Raw: RW2, RAW, RWL (Panasonic), CR2 (Canon), NEF, NRW (Nikon), ARW, SR2, SRF
-(Sony), ORF (Olympus, OM System), PEF (Pentax), SRW, ERF, 3FR, IIQ, MOS, MEF,
-DCR, KDC, and DNG from anyone.
+Raw: RW2, RAW, RWL (Panasonic), CR2, CR3, CRM (Canon), NEF, NRW (Nikon), ARW,
+SR2, SRF (Sony), ORF (Olympus, OM System), RAF (Fujifilm), PEF (Pentax), SRW,
+ERF, 3FR, IIQ, MOS, MEF, DCR, KDC, and DNG from anyone.
 Video: MP4, MOV, MTS, M2TS, AVI.
 
 The extension decides only which files are picked up; which parser runs is
 decided by the file's leading bytes, so a mislabelled file still reads
-correctly. Every raw above is a TIFF container, so one parser reads them all —
-Olympus and Panasonic simply stamp a different signature in the header.
+correctly.
 
-**Not read yet:** Canon CR3 and CRM, Fujifilm RAF, and the EXIF inside HEIF
-(`.HIF`, `.HEIC`). HEIF files are still picked up, so they land in `undated/`
-rather than being passed over in silence; CR3 and RAF are not picked up at all.
+Most of those raws are a TIFF container and one parser reads them all — Olympus
+and Panasonic simply stamp a different signature in the header, and BigTIFF
+widens every count and offset from four bytes to eight. Three keep their EXIF
+somewhere else, and each is found and then handed to that same parser: Canon
+CR3 and CRM bury a TIFF block in `moov/uuid/CMT2`, HEIF stores one as an item
+the `meta` box points at, and Fujifilm RAF gives the offset of a complete JPEG
+in bytes 84–87 of its header.
+
+**Not read yet:** AVCHD clips (`.MTS`, `.M2TS`) and HLG photos (`.HSP`).
 
 The date comes from the first of these that answers:
 
 1. **EXIF** `DateTimeOriginal` / `CreateDate` / `ModifyDate` — every still and
    every raw listed above.
 2. **The JPEG embedded in a raw**, for raws that carry the date nowhere else.
-3. **`moov/mvhd`** in MP4 and MOV, read verbatim. The specification calls that
-   field UTC, but Panasonic writes the clock the camera is set to, so nothing
-   is converted. Note that Canon, Nikon and Apple often do write UTC there, so
-   video from those cameras is currently filed by a shifted clock.
-4. **The other format of the same shot** — the JPEG beside a raw, or the THM
-   beside a Canon AVI, matched on folder and file name.
-5. **The date the filesystem keeps**, for AVCHD clips, HLG photos and HEIF
-   stills. Days containing such files are marked `~`.
+3. **A video clock that names its own timezone** — the `©day` user data Canon
+   and Nikon write, Apple's `com.apple.quicktime.creationdate`, or the EXIF in
+   the thumbnail Canon stores beside the clip. The local time is taken as the
+   camera's own clock and the offset discarded, which is the point: it is what
+   the photographer saw on the back of the camera.
+4. **`moov/mvhd`**, read verbatim, when the clip named no zone. Panasonic
+   writes the camera's clock there, so nothing is converted.
+5. **The other format of the same shot** — the JPEG beside a raw, or the THM
+   beside a Canon AVI. Matched on folder and file name, and failing that on
+   file name alone, but only when exactly one shot on the whole card goes by
+   that name, so a dual-slot body that split raw and JPEG across two cards
+   still pairs up while two cameras that both wrote `DSC_0001` do not.
+6. **The date the filesystem keeps**, for AVCHD clips and HLG photos. Days
+   containing such files are marked `~`.
 
 Step 5 is only worth anything if whatever copied the card kept those dates.
 `cp` without `-p` does not: it stamps every file with the moment of the copy.

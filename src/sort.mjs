@@ -93,18 +93,34 @@ export function scanForMediaFiles(inputPaths) {
 const sameShotKey = (filePath) =>
   path.join(path.dirname(filePath), path.basename(filePath, path.extname(filePath))).toLowerCase();
 
+const shotNameAlone = (filePath) => path.basename(filePath, path.extname(filePath)).toLowerCase();
+
 function fillMissingDatesFromTheSameShot(mediaFiles) {
   const timestampOfEachShot = new Map();
+  const timestampsEachNameWasGiven = new Map();
+
   for (const mediaFile of mediaFiles) {
+    if (mediaFile.timestamp === null) continue;
+
     const key = sameShotKey(mediaFile.path);
-    if (mediaFile.timestamp !== null && !timestampOfEachShot.has(key)) {
-      timestampOfEachShot.set(key, mediaFile.timestamp);
-    }
+    if (!timestampOfEachShot.has(key)) timestampOfEachShot.set(key, mediaFile.timestamp);
+
+    const name = shotNameAlone(mediaFile.path);
+    const timestampsSoFar = timestampsEachNameWasGiven.get(name) ?? new Set();
+    timestampsSoFar.add(mediaFile.timestamp);
+    timestampsEachNameWasGiven.set(name, timestampsSoFar);
   }
 
   for (const mediaFile of mediaFiles) {
     if (mediaFile.timestamp !== null) continue;
-    const timestampOfTheOtherFormat = timestampOfEachShot.get(sameShotKey(mediaFile.path));
+
+    const inTheSameFolder = timestampOfEachShot.get(sameShotKey(mediaFile.path));
+    const everyTimestampThatNameHas = timestampsEachNameWasGiven.get(shotNameAlone(mediaFile.path));
+    const theOneTimeThatNameWasUsed = everyTimestampThatNameHas?.size === 1
+      ? [...everyTimestampThatNameHas][0]
+      : undefined;
+
+    const timestampOfTheOtherFormat = inTheSameFolder ?? theOneTimeThatNameWasUsed;
     if (timestampOfTheOtherFormat === undefined) continue;
     mediaFile.timestamp = timestampOfTheOtherFormat;
     mediaFile.dateSource = DATE_SOURCE.siblingFile;

@@ -9,9 +9,11 @@ import {
   PANASONIC_RAW_SIGNATURE, TIFF_STANDARD_SIGNATURE,
   OLYMPUS_RAW_SIGNATURE, OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES,
   jpegFileWithARestartMarkerFirst, jpegFileBuriedUnderManySegments, movieFileWhoseMovieBoxRunsToTheEnd,
+  movieFile, canonRawFile, fujifilmRawFile, heifStill, bigTiffFile,
+  movieFileSayingWhichZoneItsClockIsIn, movieFileCarryingACanonThumbnail, movieFileWithAnAppleCreationDate,
 } from './fixtures.mjs';
 import { readTimestampFromFile } from '../src/date.mjs';
-import { PLACEMENT, FILESYSTEM_DATE_USE } from '../src/sort.mjs';
+import { PLACEMENT, FILESYSTEM_DATE_USE, UNDATED_FOLDER_NAME } from '../src/sort.mjs';
 import { DATE_SOURCE } from '../src/date.mjs';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -280,6 +282,87 @@ function aCardFromAnotherMakerSortsToo() {
       '2026-08-28/MVI_0002.THM',
     ].join('\n'),
     visibleFilesUnder(dump).join('\n'));
+}
+
+function theContainersThatHoldTheirExifSomewhereElse() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'containers-'));
+  const dateOf = (fileName, contents) => {
+    const filePath = path.join(dump, fileName);
+    writeFixtureFile(filePath, contents);
+    return readTimestampFromFile(filePath, fs.statSync(filePath).size)?.timestamp ?? null;
+  };
+  const shotAt = '2026:08:27 09:07:01';
+  const whenItWasShot = '2026-08-27 09:07:01';
+
+  expect('a Canon CR3 is read from the Exif Canon buries in moov/uuid/CMT2',
+    dateOf('IMG_0001.CR3', canonRawFile(shotAt)) === whenItWasShot);
+  expect('a Canon CRM, which is the same container, is read the same way',
+    dateOf('A001C001.CRM', canonRawFile(shotAt)) === whenItWasShot);
+  expect('a Fujifilm RAF is read from the JPEG its header points at',
+    dateOf('DSCF0001.RAF', fujifilmRawFile(shotAt)) === whenItWasShot);
+
+  const heifShapes = [
+    ['the usual shape', {}],
+    ['an item location written the older way, without a construction method', { itemLocationVersion: 0 }],
+    ['long item ids throughout', { itemLocationVersion: 2, itemEntryVersion: 3 }],
+    ['a payload that does not spell out the Exif marker', { spellsOutTheExifMarker: false }],
+  ];
+  heifShapes.forEach(([whatIsUnusualAboutIt, shape], shapeIndex) => {
+    expect(`a HEIF still is read for its date, with ${whatIsUnusualAboutIt}`,
+      dateOf(`IMG_100${shapeIndex}.HIF`, heifStill(shotAt, shape)) === whenItWasShot);
+  });
+
+  expect('a BigTIFF raw is read, its counts and offsets being eight bytes wide rather than four',
+    dateOf('L1000001.DNG', bigTiffFile(shotAt)) === whenItWasShot);
+  expect('and the same file written most significant byte first',
+    dateOf('L1000002.DNG', bigTiffFile(shotAt, { bigEndian: true })) === whenItWasShot);
+}
+
+function videoFiledByTheClockTheCameraWasSetTo() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'video-clocks-'));
+  const dateOf = (fileName, contents) => {
+    const filePath = path.join(dump, fileName);
+    writeFixtureFile(filePath, contents);
+    return readTimestampFromFile(filePath, fs.statSync(filePath).size)?.timestamp ?? null;
+  };
+  const theClockOnTheCamera = '2026-08-27 09:07:01';
+  const theSameMomentInUtc = '2026-08-27 07:07:01';
+
+  expect('a clip whose movie header is in UTC is filed by the local time its user data spells out',
+    dateOf('MVI_0001.MOV', movieFileSayingWhichZoneItsClockIsIn(theSameMomentInUtc, '2026-08-27T09:07:01+0200'))
+      === theClockOnTheCamera);
+  expect('a Canon clip is filed by the Exif in the thumbnail Canon stores beside the video',
+    dateOf('MVI_0002.MOV', movieFileCarryingACanonThumbnail(theSameMomentInUtc, '2026:08:27 09:07:01'))
+      === theClockOnTheCamera);
+  expect('an iPhone clip is filed by the creation date Apple writes into its metadata keys',
+    dateOf('IMG_0003.MP4', movieFileWithAnAppleCreationDate(theSameMomentInUtc, '2026-08-27T09:07:01+0200'))
+      === theClockOnTheCamera);
+
+  expect('a spelled-out date that says only that it is UTC is passed over, leaving the movie header to answer',
+    dateOf('MVI_0004.MOV', movieFileSayingWhichZoneItsClockIsIn(theClockOnTheCamera, '2026-08-27T09:07:01Z'))
+      === theClockOnTheCamera);
+  expect('a clip that spells out no zone at all is still read from its movie header, as Panasonic clips are',
+    dateOf('P1000005.MP4', movieFile(theClockOnTheCamera)) === theClockOnTheCamera);
+}
+
+function aRawAndItsJpegOnDifferentCards() {
+  const twoSlots = fs.mkdtempSync(path.join(temporaryDirectory, 'two-slots-'));
+  const rawOn = (slot, name, contents) => writeFixtureFile(path.join(twoSlots, slot, 'DCIM', '100NC_Z9', name), contents);
+
+  rawOn('SLOT1', 'DSC_0001.HSP', Buffer.alloc(64, 1));
+  rawOn('SLOT2', 'DSC_0001.JPG', jpegFile('2026:08:27 09:07:01'));
+  const plan = runCommand(['-n', '--json', twoSlots]);
+  expect('a file with no date of its own takes it from its twin on the other card slot',
+    folderChosenFor(plan.standardOutput, 'DSC_0001.HSP') === '2026-08-27', plan.standardOutput);
+
+  const twoCameras = fs.mkdtempSync(path.join(temporaryDirectory, 'two-cameras-'));
+  writeFixtureFile(path.join(twoCameras, 'A', 'DSC_0001.JPG'), jpegFile('2026:08:27 09:07:01'));
+  writeFixtureFile(path.join(twoCameras, 'B', 'DSC_0001.JPG'), jpegFile('2026:09:14 18:00:00'));
+  writeFixtureFile(path.join(twoCameras, 'C', 'DSC_0001.HSP'), Buffer.alloc(64, 2));
+
+  const guessed = runCommand(['-n', '--json', '--ignore-filesystem-date', twoCameras]);
+  expect('but when two cameras used that name on different days it guesses at neither',
+    folderChosenFor(guessed.standardOutput, 'DSC_0001.HSP') === UNDATED_FOLDER_NAME, guessed.standardOutput);
 }
 
 function whenTheFilesystemRefuses() {
@@ -601,6 +684,9 @@ nothingIsWrittenUntilTheWholePlanIsSettled();
 containersThatAreLegalButUnusual();
 theRawEveryMakerWrites();
 aCardFromAnotherMakerSortsToo();
+theContainersThatHoldTheirExifSomewhereElse();
+videoFiledByTheClockTheCameraWasSetTo();
+aRawAndItsJpegOnDifferentCards();
 whenTheFilesystemRefuses();
 theCameraClockIsTheOnlyClock();
 aCardCopiedWithoutPreservingTimes();

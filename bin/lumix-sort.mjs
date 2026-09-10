@@ -77,12 +77,15 @@ happen to be standing in.
 
 Every file is filed under the clock the camera was set to when it was taken,
 stills and video alike, so the folder a file lands in never depends on where
-the computer sorting it happens to be.
+the computer sorting it happens to be. For video that means preferring a clock
+the camera spelled a timezone out for -- the user data Canon and Nikon write,
+Apple's creation date, the thumbnail Canon stores beside the clip -- and only
+then the movie header, which some makers write in UTC and others in local time.
 
-Some files record no date this can read: AVCHD clips, HLG photos and HEIF
-stills. The only date left for those is the one the filesystem keeps, which is
-the real shooting time when the copy off the card preserved it, and meaningless
-when it did not, because cp without -p replaces it with the moment of the copy.
+AVCHD clips and HLG photos record no date this can read. The only date left for
+those is the one the filesystem keeps, which is the real shooting time when the
+copy off the card preserved it, and meaningless when it did not, because cp
+without -p replaces it with the moment of the copy.
 So by default the filesystem date is used for such a file only when it still
 looks like a shooting time, and the file goes to ${UNDATED_FOLDER_NAME}/ when it does not.
 These two settle it by hand instead:
@@ -109,10 +112,11 @@ These two settle it by hand instead:
 Short options may be run together: -nv is -n -v. A -- argument ends option
 parsing.
 
-Reads JPEG, TIFF and MPO stills; DNG and the raw of Panasonic (RW2), Canon
-(CR2), Nikon (NEF, NRW), Sony (ARW, SR2), Olympus and OM System (ORF) and
-Pentax (PEF); and MP4, MOV, MTS, M2TS and AVI video. A Canon THM sidecar dates
-the clip beside it. Canon CR3 and Fujifilm RAF are not read yet.
+Reads JPEG, TIFF, MPO and HEIF stills; DNG and the raw of Panasonic (RW2),
+Canon (CR2, CR3), Nikon (NEF, NRW), Sony (ARW, SR2), Olympus and OM System
+(ORF), Fujifilm (RAF) and Pentax (PEF); and MP4, MOV, MTS, M2TS and AVI video.
+A Canon THM sidecar dates the clip beside it, as does a JPEG on another card
+slot when only one shot on the card goes by that name.
 
 Nothing is ever overwritten. When one day holds two different photos with the
 same file name, as happens when a card's numbering wraps or two card folders

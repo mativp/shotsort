@@ -13,7 +13,8 @@ export const OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES = 0x5352;
 
 const TIFF_TAG_JPEG_FROM_RAW = 0x002e;
 const TIFF_TAG_EXIF_DIRECTORY_POINTER = 0x8769;
-const TIFF_TAG_DATE_TIME_ORIGINAL = 0x9003;
+export const TIFF_TAG_MODIFY_DATE = 0x0132;
+export const TIFF_TAG_DATE_TIME_ORIGINAL = 0x9003;
 const TIFF_VALUE_TYPE_ASCII = 2;
 const TIFF_VALUE_TYPE_LONG = 4;
 const TIFF_VALUE_TYPE_UNDEFINED = 7;
@@ -240,14 +241,18 @@ function movieHeaderBox(cameraClock, creationTimeIs64Bit) {
   return isoBox('mvhd', body);
 }
 
-export function movieFile(cameraClock, { creationTimeIs64Bit = false, videoDataUses64BitBoxSize = false } = {}) {
+export function movieFile(cameraClock, {
+  creationTimeIs64Bit = false, videoDataUses64BitBoxSize = false,
+  extraUserData = null, extraMovieBoxes = null,
+} = {}) {
   const videoData = Buffer.alloc(BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE);
   return Buffer.concat([
     isoBox('ftyp', Buffer.from('mp42mp42isom', 'latin1')),
     videoDataUses64BitBoxSize ? isoBoxWith64BitSize('mdat', videoData) : isoBox('mdat', videoData),
     isoBox('moov', Buffer.concat([
-      isoBox('udta', Buffer.alloc(16)),
+      isoBox('udta', extraUserData ?? Buffer.alloc(16)),
       movieHeaderBox(cameraClock, creationTimeIs64Bit),
+      ...(extraMovieBoxes === null ? [] : [extraMovieBoxes]),
     ])),
   ]);
 }
@@ -265,6 +270,165 @@ export function movieFileWhoseMovieBoxRunsToTheEnd(cameraClock) {
     isoBox('mdat', Buffer.alloc(BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE)),
     isoBoxRunningToTheEndOfTheFile('moov', movieHeaderBox(cameraClock, false)),
   ]);
+}
+
+const BIG_TIFF_SIGNATURE = 0x2b;
+const BYTES_IN_A_BIG_TIFF_HEADER = 16;
+const BYTES_PER_BIG_TIFF_DIRECTORY_ENTRY = 20;
+const BYTES_IN_A_BIG_TIFF_OFFSET = 8;
+const BYTES_IN_A_BIG_TIFF_DIRECTORY_HOLDING_ONE_ENTRY =
+  BYTES_IN_A_BIG_TIFF_OFFSET + BYTES_PER_BIG_TIFF_DIRECTORY_ENTRY + BYTES_IN_A_BIG_TIFF_OFFSET;
+
+const CANON_METADATA_UUID = Buffer.from('85c0b687820f11e08111f4ce462b6a48', 'hex');
+const FUJIFILM_RAW_HEADER_BYTES = 148;
+const BYTES_FROM_RAW_FILE_START_TO_ITS_EMBEDDED_JPEG_POINTER = 84;
+const APPLE_CREATION_DATE_KEY = 'com.apple.quicktime.creationdate';
+const METADATA_KEY_NAMESPACE = 'mdta';
+const BYTES_IN_A_METADATA_KEY_HEADER = 8;
+const ITEM_LOCATION_VERSION_WITH_LONG_COUNTS = 2;
+const ITEM_ENTRY_VERSION_NAMING_THE_TYPE_AS_A_LONG_ID = 3;
+const EXIF_ITEM_ID = 1;
+const HEIF_EXIF_PAYLOAD_SKIPPING_THE_MARKER = 6;
+const OFFSET_AND_LENGTH_BOTH_FOUR_BYTES_WIDE = 0x44;
+
+const bigEndianUInt16 = (value) => { const b = Buffer.alloc(2); b.writeUInt16BE(value, 0); return b; };
+const bigEndianUInt32 = (value) => { const b = Buffer.alloc(4); b.writeUInt32BE(value, 0); return b; };
+
+function isoFullBox(boxType, version, body) {
+  return isoBox(boxType, Buffer.concat([Buffer.from([version, 0, 0, 0]), body]));
+}
+
+export function tiffFileWithTheDateInItsMainDirectory(dateTag, dateTimeOriginal) {
+  const header = tiffHeaderPointingAtFirstDirectory(TIFF_STANDARD_SIGNATURE, BYTES_IN_TIFF_HEADER);
+  const dateValue = Buffer.from(`${dateTimeOriginal}\0`, 'latin1');
+  const mainDirectory = tiffDirectoryHolding([tiffDirectoryEntry({
+    tag: dateTag,
+    valueType: TIFF_VALUE_TYPE_ASCII,
+    valueCount: dateValue.length,
+    valueOrOffset: BYTES_IN_TIFF_HEADER + BYTES_IN_A_DIRECTORY_HOLDING_ONE_ENTRY,
+  })]);
+  return Buffer.concat([header, mainDirectory, dateValue]);
+}
+
+export function bigTiffFile(dateTimeOriginal, { bigEndian = false } = {}) {
+  const uInt16 = (value) => { const b = Buffer.alloc(2); bigEndian ? b.writeUInt16BE(value) : b.writeUInt16LE(value); return b; };
+  const uInt64 = (value) => {
+    const b = Buffer.alloc(8);
+    if (bigEndian) b.writeBigUInt64BE(BigInt(value)); else b.writeBigUInt64LE(BigInt(value));
+    return b;
+  };
+  const entry = (tag, valueType, valueCount, valueOrOffset) =>
+    Buffer.concat([uInt16(tag), uInt16(valueType), uInt64(valueCount), uInt64(valueOrOffset)]);
+  const directoryHolding = (entries) => Buffer.concat([uInt64(entries.length), ...entries, uInt64(0)]);
+
+  const header = Buffer.concat([
+    Buffer.from(bigEndian ? TIFF_BIG_ENDIAN_MARK : TIFF_LITTLE_ENDIAN_MARK, 'latin1'),
+    uInt16(BIG_TIFF_SIGNATURE), uInt16(BYTES_IN_A_BIG_TIFF_OFFSET), uInt16(0),
+    uInt64(BYTES_IN_A_BIG_TIFF_HEADER),
+  ]);
+  const exifDirectoryOffset = BYTES_IN_A_BIG_TIFF_HEADER + BYTES_IN_A_BIG_TIFF_DIRECTORY_HOLDING_ONE_ENTRY;
+  const dateValueOffset = exifDirectoryOffset + BYTES_IN_A_BIG_TIFF_DIRECTORY_HOLDING_ONE_ENTRY;
+  const dateValue = Buffer.from(`${dateTimeOriginal}\0`, 'latin1');
+
+  return Buffer.concat([
+    header,
+    directoryHolding([entry(TIFF_TAG_EXIF_DIRECTORY_POINTER, TIFF_VALUE_TYPE_LONG, 1, exifDirectoryOffset)]),
+    directoryHolding([entry(TIFF_TAG_DATE_TIME_ORIGINAL, TIFF_VALUE_TYPE_ASCII, dateValue.length, dateValueOffset)]),
+    dateValue,
+  ]);
+}
+
+export function canonRawFile(dateTimeOriginal, { modifyDate = '2001:01:01 00:00:00' } = {}) {
+  const movieHeader = Buffer.alloc(BYTES_IN_MOVIE_HEADER_WITH_32_BIT_TIMES);
+  return Buffer.concat([
+    isoBox('ftyp', Buffer.from('crx crx isom', 'latin1')),
+    isoBox('moov', Buffer.concat([
+      isoBox('mvhd', movieHeader),
+      isoBox('uuid', Buffer.concat([
+        CANON_METADATA_UUID,
+        isoBox('CMT1', tiffFileWithTheDateInItsMainDirectory(TIFF_TAG_MODIFY_DATE, modifyDate)),
+        isoBox('CMT2', tiffFileWithTheDateInItsMainDirectory(TIFF_TAG_DATE_TIME_ORIGINAL, dateTimeOriginal)),
+      ])),
+    ])),
+    isoBox('mdat', Buffer.alloc(BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE)),
+  ]);
+}
+
+export function fujifilmRawFile(dateTimeOriginal) {
+  const header = Buffer.alloc(FUJIFILM_RAW_HEADER_BYTES);
+  header.write('FUJIFILMCCD-RAW 0201FF129502', 0, 'latin1');
+  header.write('X-T5', 32, 'latin1');
+  const embeddedJpeg = jpegFile(dateTimeOriginal);
+  header.writeUInt32BE(FUJIFILM_RAW_HEADER_BYTES, BYTES_FROM_RAW_FILE_START_TO_ITS_EMBEDDED_JPEG_POINTER);
+  header.writeUInt32BE(embeddedJpeg.length, BYTES_FROM_RAW_FILE_START_TO_ITS_EMBEDDED_JPEG_POINTER + 4);
+  return Buffer.concat([header, embeddedJpeg, Buffer.alloc(BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE)]);
+}
+
+export function heifStill(dateTimeOriginal, {
+  itemLocationVersion = 1, itemEntryVersion = 2, spellsOutTheExifMarker = true,
+} = {}) {
+  const exifPayload = spellsOutTheExifMarker
+    ? Buffer.concat([
+      bigEndianUInt32(HEIF_EXIF_PAYLOAD_SKIPPING_THE_MARKER), Buffer.from(EXIF_HEADER, 'latin1'),
+      tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal }),
+    ])
+    : Buffer.concat([bigEndianUInt32(0), tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal })]);
+
+  const idIsLong = itemEntryVersion >= ITEM_ENTRY_VERSION_NAMING_THE_TYPE_AS_A_LONG_ID;
+  const itemInformationEntry = isoFullBox('infe', itemEntryVersion, Buffer.concat([
+    idIsLong ? bigEndianUInt32(EXIF_ITEM_ID) : bigEndianUInt16(EXIF_ITEM_ID),
+    bigEndianUInt16(0), Buffer.from('Exif\0', 'latin1'),
+  ]));
+  const itemInformation = isoFullBox('iinf', 0, Buffer.concat([bigEndianUInt16(1), itemInformationEntry]));
+
+  const countsAreLong = itemLocationVersion >= ITEM_LOCATION_VERSION_WITH_LONG_COUNTS;
+  const asLongAsTheVersionNeeds = (value) => (countsAreLong ? bigEndianUInt32(value) : bigEndianUInt16(value));
+
+  const buildWithTheExifItemAt = (payloadStart) => {
+    const carriesAConstructionMethod = itemLocationVersion >= 1;
+    const item = Buffer.concat([
+      asLongAsTheVersionNeeds(EXIF_ITEM_ID),
+      ...(carriesAConstructionMethod ? [bigEndianUInt16(0)] : []),
+      bigEndianUInt16(0), bigEndianUInt16(1),
+      bigEndianUInt32(payloadStart), bigEndianUInt32(exifPayload.length),
+    ]);
+    const itemLocation = isoFullBox('iloc', itemLocationVersion, Buffer.concat([
+      Buffer.from([OFFSET_AND_LENGTH_BOTH_FOUR_BYTES_WIDE, 0x00]), asLongAsTheVersionNeeds(1), item,
+    ]));
+    return Buffer.concat([
+      isoBox('ftyp', Buffer.from('heicmif1miafheic', 'latin1')),
+      isoFullBox('meta', 0, Buffer.concat([isoBox('hdlr', Buffer.alloc(24)), itemInformation, itemLocation])),
+      isoBox('mdat', exifPayload),
+    ]);
+  };
+  const measured = buildWithTheExifItemAt(0);
+  return buildWithTheExifItemAt(measured.length - exifPayload.length);
+}
+
+export function movieFileSayingWhichZoneItsClockIsIn(mvhdClock, spelledOutDate) {
+  const creationDate = isoBox('\u00a9day', Buffer.concat([
+    bigEndianUInt16(spelledOutDate.length), bigEndianUInt16(0), Buffer.from(spelledOutDate, 'latin1'),
+  ]));
+  return movieFile(mvhdClock, { extraUserData: creationDate });
+}
+
+export function movieFileCarryingACanonThumbnail(mvhdClock, dateTimeOriginal) {
+  return movieFile(mvhdClock, { extraUserData: isoBox('CNTH', isoBox('CNDA', jpegFile(dateTimeOriginal))) });
+}
+
+export function movieFileWithAnAppleCreationDate(mvhdClock, spelledOutDate) {
+  const keyName = Buffer.from(APPLE_CREATION_DATE_KEY, 'latin1');
+  const keys = isoFullBox('keys', 0, Buffer.concat([
+    bigEndianUInt32(1),
+    bigEndianUInt32(BYTES_IN_A_METADATA_KEY_HEADER + keyName.length),
+    Buffer.from(METADATA_KEY_NAMESPACE, 'latin1'), keyName,
+  ]));
+  const value = isoBox('data', Buffer.concat([
+    bigEndianUInt32(1), bigEndianUInt32(0), Buffer.from(spelledOutDate, 'latin1'),
+  ]));
+  const itemList = isoBox('ilst', isoBox(bigEndianUInt32(1).toString('latin1'), value));
+  const metadata = isoFullBox('meta', 0, Buffer.concat([isoBox('hdlr', Buffer.alloc(24)), keys, itemList]));
+  return movieFile(mvhdClock, { extraMovieBoxes: metadata });
 }
 
 export function buildCardDump(directory, { everyFileStampedAt = null } = {}) {
