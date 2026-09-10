@@ -1,0 +1,42 @@
+{
+  "name": "lumix-sort",
+  "version": "1.0.0",
+  "description": "Sort a folder of Panasonic Lumix photos and video into one folder per shooting day.",
+  "type": "module",
+  "bin": {
+    "lumix-sort": "bin/lumix-sort.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "man",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test/selftest.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "lumix",
+    "panasonic",
+    "exif",
+    "rw2",
+    "photo",
+    "import",
+    "cli"
+  ],
+  "author": "Mateusz Szwedkowicz <mat.szwedkowicz@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mativp/lumix-sort.git"
+  },
+  "homepage": "https://github.com/mativp/lumix-sort#readme",
+  "bugs": "https://github.com/mativp/lumix-sort/issues",
+  "man": [
+    "man/lumix-sort.1"
+  ]
+}

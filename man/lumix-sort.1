@@ -1,0 +1,296 @@
+.TH LUMIX\-SORT 1 "2026-09-08" "lumix-sort 1.0.0" "User Commands"
+.SH NAME
+lumix\-sort \- sort Panasonic Lumix photos and video
+by the day they were shot
+.SH SYNOPSIS
+.B lumix\-sort
+.RI [ OPTION ]...
+.IR FOLDER ...
+.SH DESCRIPTION
+.B lumix\-sort
+groups photos and video shot on a Panasonic Lumix camera by the day they were
+taken, using the date the camera recorded inside each file rather than anything
+the filesystem claims. It is meant for the folder you get after copying a card:
+point it at that folder and it replaces the camera's
+.I DCIM/100_PANA
+layout with one folder per shooting day.
+.PP
+Files are copied, never moved, unless
+.B \-\-move
+is given, so that a mistaken run costs nothing but disk space.
+.PP
+Every file is examined and its destination decided before anything is written,
+so nothing moves until the whole plan is settled.
+.B \-\-dry\-run
+prints that plan.
+.PP
+A
+.I FOLDER
+must always be named:
+.B lumix\-sort
+run with no arguments prints its options and sorts nothing, and it never falls
+back to the folder you are working in. Day folders are created at the top level
+of the folder you name, or of
+.B \-\-dest
+when that is given, and the files are copied into them. Under
+.B \-\-move
+the files are moved instead, and any folder the move leaves empty is removed.
+Running the command a second time on the same folder does nothing.
+.PP
+Nothing is ever overwritten and no file is read from a card that is not
+explicitly named. See
+.B SAFETY
+below.
+.SH OPTIONS
+.TP
+.BR \-s ", " \-\-source " " \fIFOLDER\fR
+The folder to sort. The same as naming it without a flag, and worth spelling
+out whenever
+.B \-\-dest
+is used too, so it is plain which folder is read and which is written. May be
+given more than once.
+.TP
+.BR \-d ", " \-\-dest " " \fIFOLDER\fR
+Put the day folders in
+.I FOLDER
+instead of inside the source folder. With copying left as the default, this
+builds a sorted library and leaves the source exactly as it came off the card.
+.TP
+.BR \-n ", " \-\-dry\-run
+Print the plan and change nothing. The plan shown is the one that would be
+carried out, computed by the same code.
+.TP
+.BR \-m ", " \-\-move
+Move the files rather than copying them, leaving each source folder empty and
+then removing it. Without this the originals are left exactly where they are,
+so the source folder ends up holding both them and the sorted copies unless
+.B \-\-dest
+sends the copies elsewhere.
+.TP
+.BR \-\-layout " " \fIFORMAT\fR
+How to name each day folder.
+.B %Y
+is the year,
+.B %m
+the month,
+.B %d
+the day, and
+.B %F
+all three joined by dashes. A slash makes a subfolder, so
+.B \-\-layout '%Y/%F'
+gives
+.IR 2026/2026\-08\-27 .
+Must be a relative path holding at least one date escape. Default:
+.BR %Y\-%m\-%d .
+.TP
+.BR \-\-day\-start " " \fIHOUR\fR
+The hour at which one shooting day becomes the next. The default, 0, turns the
+day at midnight, so a wedding shot from 20:00 on the 27th until 01:30 on the
+28th is split between
+.I 2026\-08\-27
+and
+.IR 2026\-08\-28 .
+.B \-\-day\-start 4
+turns the day at 04:00 instead, filing everything shot before 04:00 under the
+previous day, so that whole night lands in
+.I 2026\-08\-27
+together. An hour from 0 to 12.
+.TP
+.B \-\-use\-filesystem\-date
+Date every file that records no date inside itself by the date the filesystem
+keeps, without checking that date first. See
+.B HOW THE DATE IS FOUND.
+.TP
+.B \-\-ignore\-filesystem\-date
+Date none of them that way: every file that records no date inside itself goes
+to
+.IR undated/ .
+.TP
+.BR \-0 ", " \-\-null
+Take the list of files from standard input, separated by NUL bytes as
+.B find \-print0
+writes them, rather than walking a folder. Requires
+.BR \-\-dest ,
+as there is then no folder being sorted in place.
+.TP
+.BR \-v ", " \-\-verbose
+Print every file as it is placed, as
+.RI \(lq source " \-> " destination \(rq.
+Files already in the right place are not printed.
+.TP
+.BR \-q ", " \-\-quiet
+Print nothing but errors.
+.TP
+.B \-\-json
+Print the plan and the result as JSON on standard output: every file with the
+folder chosen for it, the clock the date came from, and what was done.
+.TP
+.BR \-h ", " \-\-help
+Print the usage text and exit, exactly as running
+.B lumix\-sort
+with no arguments does.
+.TP
+.BR \-V ", " \-\-version
+Print the version and exit.
+.PP
+Short options may be run together:
+.B \-nv
+is
+.BR "\-n \-v" .
+A
+.B \-\-
+argument ends option parsing.
+.SH EXIT STATUS
+.TP
+.B 0
+Every file was placed.
+.TP
+.B 1
+Some files were not placed, or none were found.
+.TP
+.B 2
+The command line was wrong, naming no folder to sort included. Running
+.B lumix\-sort
+with no arguments at all therefore prints the usage text and exits
+.BR 2 .
+.SH FILE TYPES
+Stills:
+.BR JPG ", " JPEG ", " MPO ", " HSP ", " HIF ", " HEIC .
+Raw:
+.BR RW2 ", " RAW ", " RWL ", " DNG ", " TIF ", " TIFF .
+Video:
+.BR MP4 ", " MOV ", " MTS ", " M2TS ", " AVI ,
+including 4K and 6K PHOTO clips.
+.PP
+The extension decides only which files are picked up; which parser runs is
+decided by the file's leading bytes, so a mislabelled file still reads
+correctly. Anything else on the card, including AVCHD
+.B .CPI
+sidecars, is left untouched.
+.SH HOW THE DATE IS FOUND
+The first of these that answers wins.
+.IP 1. 4
+.B EXIF
+.IR DateTimeOriginal ", " CreateDate " or " ModifyDate ,
+for JPEG and RW2. Both are TIFF containers, so one parser reads both.
+.IP 2. 4
+.B The JPEG embedded in an RW2
+(tag 0x2e), for raws that carry the date nowhere else.
+.IP 3. 4
+.B moov/mvhd
+in MP4 and MOV, read verbatim. The specification calls that field UTC, but
+Panasonic writes the clock the camera is set to, so no conversion is applied.
+Video is therefore filed exactly as stills are, by the camera's own clock, and
+neither depends on the timezone of the machine doing the sorting.
+.IP 4. 4
+.BR "A sibling frame" :
+the JPEG beside an RW2 of the same shot, matched on folder and file number.
+.IP 5. 4
+.BR "The file's own timestamp" ,
+for AVCHD clips and HLG photos, which hold no date internally. Days containing
+such files are marked
+.B ~
+in the summary.
+.PP
+Step 5 is only meaningful if whatever copied the card preserved the filesystem
+dates.
+.BR cp (1)
+without
+.B \-p
+does not; it stamps every file with the moment of the copy. By default this is
+detected \(em a filesystem date well after the newest date any file actually
+records is the moment of a copy, not a shooting time \(em and those files are
+placed in
+.I undated/
+instead of a wrong day. Copy the card with
+.BR ditto (1),
+.BR "cp \-p" ,
+or
+.BR "rsync \-a"
+and they sort correctly;
+.B \-\-use\-filesystem\-date
+takes them as they are regardless.
+.SH SAFETY
+When one day holds two different photographs with the same file name, each goes
+into a numbered subfolder of that day, oldest first:
+.I 2026\-09\-01/01/A9999.RW2
+for a frame shot at 10:00 and
+.I 2026\-09\-01/02/A9999.RW2
+for one shot at 22:00. This matters because a camera reuses file numbers when
+its counter wraps and across
+.I 100_PANA
+and
+.IR 101_PANA ,
+so two different photographs really do arrive with the same name. A name that
+clashes with nothing stays directly in the day folder, and the formats of one
+shot stay together, since they differ by extension and so do not clash.
+.PP
+A destination name already taken by
+.I identical
+bytes means the file is already sorted, so it is skipped; under
+.B \-\-move
+the stray original is dropped
+instead. That comparison reads both files in full rather than trusting
+their size.
+.PP
+Under
+.B \-\-move
+a move within one filesystem is a rename; across filesystems the copy is
+verified before the original is unlinked, and a short copy leaves the original
+alone. Only folders that are already empty are removed, and never one named
+on the command line.
+.SH EXAMPLES
+.TP
+.B lumix\-sort
+Print the options and sort nothing.
+.TP
+.B lumix\-sort \-n \-s ~/Import \-d ~/Pictures/2026
+Print what that would do, and do none of it.
+.TP
+.B lumix\-sort \-s ~/Import \-d ~/Pictures/2026
+Read
+.I ~/Import
+and build the sorted day folders under
+.IR ~/Pictures/2026 ,
+leaving
+.I ~/Import
+exactly as it came off the card. This is the usual way to run it.
+.TP
+.B lumix\-sort ~/Import
+Sort it in place. The day folders hold copies and the originals stay in
+.IR DCIM ,
+so the folder briefly holds both.
+.TP
+.B lumix\-sort \-m ~/Import
+The same, moving the files rather than copying them, so nothing is duplicated
+and the emptied
+.I DCIM
+folders are removed afterwards.
+.TP
+.B lumix\-sort .
+Sort the folder you are standing in.
+.TP
+.B lumix\-sort \-\-layout '%Y/%F' ~/Import
+Put a year level above the days.
+.TP
+.B lumix\-sort \-\-day\-start 4 ~/Import
+Keep a shoot that ran past midnight in the day it began.
+.TP
+.B find ~/Import \-name '*.RW2' \-print0 | lumix\-sort \-0 \-d ~/Raw
+Sort only the raw files, into their own tree.
+.SH ENVIRONMENT
+.TP
+.B TZ
+Affects only files dated by step 5 above, whose filesystem dates the operating
+system resolves in the local zone. Every file that records its own date, still
+or video, is unaffected.
+.SH SEE ALSO
+.BR exiftool (1),
+.BR ditto (1),
+.BR rsync (1),
+.BR find (1)
+.SH BUGS
+AVCHD
+.RB ( .MTS )
+recording dates are stored in the transport stream itself and are not yet read;
+such clips rely on step 5.
