@@ -1,7 +1,7 @@
 # lumix-sort
 
-Sort a folder of Panasonic Lumix files into one folder per shooting day, using
-the date the camera wrote inside each file. No dependencies, no exiftool.
+Sort a folder of camera files into one folder per shooting day, using the date
+the camera wrote inside each file. No dependencies, no exiftool.
 
 ```
 $ lumix-sort ~/Import
@@ -111,9 +111,9 @@ drop `-d` and the day folders appear inside the source folder instead.
 ### Files that record no date
 
 Stills and video are both filed by the clock the camera was set to, so nothing
-here applies to them. AVCHD clips (`.MTS`) and HLG photos (`.HSP`) are the
-exception: they record no date inside them at all, leaving only the date the
-filesystem keeps. Read [What it reads](#what-it-reads) for why that date is
+here applies to them. AVCHD clips (`.MTS`), HLG photos (`.HSP`) and HEIF stills
+(`.HIF`, `.HEIC`) are the exception: no date this reads is stored inside them,
+leaving only the date the filesystem keeps. Read [What it reads](#what-it-reads) for why that date is
 sometimes worthless and how `lumix-sort` tells the difference.
 
 | | |
@@ -125,7 +125,6 @@ sometimes worthless and how `lumix-sort` tells the difference.
 
 | | |
 |---|---|
-| `-0`, `--null` | Take the list of files from standard input, separated by NUL bytes as `find -print0` writes them, rather than walking a folder. Requires `--dest`, as there is then no folder being sorted in place. |
 | `-v`, `--verbose` | Print every file as it is placed, as `source -> destination`. Files already in the right place are not printed. |
 | `-q`, `--quiet` | Print nothing but errors. |
 | `--json` | Print the plan and the result as JSON on standard output: every file with the folder chosen for it, the clock the date came from, and what was done. |
@@ -177,20 +176,34 @@ duplicate rather than a clash, so they collapse into one file.
 
 ## What it reads
 
-JPEG, RW2, RAW, RWL, DNG, MPO, HSP, TIFF, MP4, MOV, MTS, M2TS, AVI. Files are
-identified by their leading bytes, not their extension.
+Stills: JPEG, MPO, TIFF, HSP, HIF, HEIC, and Canon THM sidecars.
+Raw: RW2, RAW, RWL (Panasonic), CR2 (Canon), NEF, NRW (Nikon), ARW, SR2, SRF
+(Sony), ORF (Olympus, OM System), PEF (Pentax), SRW, ERF, 3FR, IIQ, MOS, MEF,
+DCR, KDC, and DNG from anyone.
+Video: MP4, MOV, MTS, M2TS, AVI.
+
+The extension decides only which files are picked up; which parser runs is
+decided by the file's leading bytes, so a mislabelled file still reads
+correctly. Every raw above is a TIFF container, so one parser reads them all —
+Olympus and Panasonic simply stamp a different signature in the header.
+
+**Not read yet:** Canon CR3 and CRM, Fujifilm RAF, and the EXIF inside HEIF
+(`.HIF`, `.HEIC`). HEIF files are still picked up, so they land in `undated/`
+rather than being passed over in silence; CR3 and RAF are not picked up at all.
 
 The date comes from the first of these that answers:
 
-1. **EXIF** `DateTimeOriginal` / `CreateDate` / `ModifyDate` — JPEG and RW2.
-2. **The JPEG embedded in an RW2**, for raws that carry the date nowhere else.
+1. **EXIF** `DateTimeOriginal` / `CreateDate` / `ModifyDate` — every still and
+   every raw listed above.
+2. **The JPEG embedded in a raw**, for raws that carry the date nowhere else.
 3. **`moov/mvhd`** in MP4 and MOV, read verbatim. The specification calls that
    field UTC, but Panasonic writes the clock the camera is set to, so nothing
-   is converted. Video is filed exactly as stills are, and neither depends on
-   the timezone of the computer doing the sorting.
-4. **The other format of the same shot** — the JPEG beside an RW2.
-5. **The date the filesystem keeps**, for AVCHD clips and HLG photos, which
-   record no date internally. Days containing such files are marked `~`.
+   is converted. Note that Canon, Nikon and Apple often do write UTC there, so
+   video from those cameras is currently filed by a shifted clock.
+4. **The other format of the same shot** — the JPEG beside a raw, or the THM
+   beside a Canon AVI, matched on folder and file name.
+5. **The date the filesystem keeps**, for AVCHD clips, HLG photos and HEIF
+   stills. Days containing such files are marked `~`.
 
 Step 5 is only worth anything if whatever copied the card kept those dates.
 `cp` without `-p` does not: it stamps every file with the moment of the copy.

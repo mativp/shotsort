@@ -1,9 +1,19 @@
 import fs from 'node:fs';
 
-export const MEDIA_FILE_EXTENSIONS = new Set([
-  '.JPG', '.JPEG', '.MPO', '.HSP', '.HIF', '.HEIC',
+const STILL_IMAGE_EXTENSIONS = ['.JPG', '.JPEG', '.MPO', '.HSP', '.HIF', '.HEIC', '.THM'];
+
+const RAW_EXTENSIONS_HOLDING_A_TIFF_DIRECTORY = [
   '.RW2', '.RAW', '.RWL', '.DNG', '.TIF', '.TIFF',
-  '.MP4', '.MOV', '.MTS', '.M2TS', '.AVI',
+  '.CR2', '.NEF', '.NRW', '.ARW', '.SR2', '.SRF', '.ORF', '.PEF',
+  '.SRW', '.ERF', '.3FR', '.IIQ', '.MOS', '.MEF', '.DCR', '.KDC',
+];
+
+const VIDEO_EXTENSIONS = ['.MP4', '.MOV', '.MTS', '.M2TS', '.AVI'];
+
+export const MEDIA_FILE_EXTENSIONS = new Set([
+  ...STILL_IMAGE_EXTENSIONS,
+  ...RAW_EXTENSIONS_HOLDING_A_TIFF_DIRECTORY,
+  ...VIDEO_EXTENSIONS,
 ]);
 
 export const DATE_SOURCE = {
@@ -22,6 +32,14 @@ const TIFF_LITTLE_ENDIAN_MARK = 'II';
 const TIFF_BIG_ENDIAN_MARK = 'MM';
 const TIFF_STANDARD_SIGNATURE = 0x2a;
 const PANASONIC_RAW_SIGNATURE = 0x55;
+const OLYMPUS_RAW_SIGNATURE = 0x4f52;
+const OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES = 0x5352;
+const TIFF_SIGNATURES_WORTH_READING = new Set([
+  TIFF_STANDARD_SIGNATURE,
+  PANASONIC_RAW_SIGNATURE,
+  OLYMPUS_RAW_SIGNATURE,
+  OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES,
+]);
 const TIFF_SIGNATURE_POSITION = 2;
 const TIFF_FIRST_DIRECTORY_POINTER_POSITION = 4;
 
@@ -152,7 +170,7 @@ function readTimestampFromTiff(fileDescriptor, tiffStart, { mayFallBackToEmbedde
   const isLittleEndian = byteOrderMark === TIFF_LITTLE_ENDIAN_MARK;
 
   const signature = readUInt16At(fileDescriptor, tiffStart + TIFF_SIGNATURE_POSITION, isLittleEndian);
-  if (signature !== TIFF_STANDARD_SIGNATURE && signature !== PANASONIC_RAW_SIGNATURE) return null;
+  if (!TIFF_SIGNATURES_WORTH_READING.has(signature)) return null;
 
   const firstDirectoryOffset = readUInt32At(fileDescriptor, tiffStart + TIFF_FIRST_DIRECTORY_POINTER_POSITION, isLittleEndian);
   if (firstDirectoryOffset === null) return null;

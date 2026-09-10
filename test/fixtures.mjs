@@ -5,8 +5,11 @@ const SECONDS_BETWEEN_1904_AND_1970 = 2082844800;
 const MILLISECONDS_PER_SECOND = 1000;
 
 const TIFF_LITTLE_ENDIAN_MARK = 'II';
+const TIFF_BIG_ENDIAN_MARK = 'MM';
 export const TIFF_STANDARD_SIGNATURE = 0x2a;
 export const PANASONIC_RAW_SIGNATURE = 0x55;
+export const OLYMPUS_RAW_SIGNATURE = 0x4f52;
+export const OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES = 0x5352;
 
 const TIFF_TAG_JPEG_FROM_RAW = 0x002e;
 const TIFF_TAG_EXIF_DIRECTORY_POINTER = 0x8769;
@@ -109,6 +112,38 @@ export function tiffFile({ signature, dateTimeOriginal }) {
     valueOrOffset: dateValueOffset,
   })]);
   return Buffer.concat([header, mainDirectory, exifDirectory, dateValue]);
+}
+
+export function bigEndianTiffFile(dateTimeOriginal) {
+  const directoryEntry = (tag, valueType, valueCount, valueOrOffset) => {
+    const entry = Buffer.alloc(BYTES_PER_TIFF_DIRECTORY_ENTRY);
+    entry.writeUInt16BE(tag, 0);
+    entry.writeUInt16BE(valueType, 2);
+    entry.writeUInt32BE(valueCount, 4);
+    entry.writeUInt32BE(valueOrOffset, 8);
+    return entry;
+  };
+  const directoryHolding = (entries) => {
+    const entryCount = Buffer.alloc(BYTES_IN_TIFF_ENTRY_COUNT_FIELD);
+    entryCount.writeUInt16BE(entries.length, 0);
+    return Buffer.concat([entryCount, ...entries, Buffer.alloc(BYTES_IN_NEXT_DIRECTORY_POINTER)]);
+  };
+
+  const header = Buffer.alloc(BYTES_IN_TIFF_HEADER);
+  header.write(TIFF_BIG_ENDIAN_MARK, 0, 'latin1');
+  header.writeUInt16BE(TIFF_STANDARD_SIGNATURE, 2);
+  header.writeUInt32BE(BYTES_IN_TIFF_HEADER, 4);
+
+  const exifDirectoryOffset = BYTES_IN_TIFF_HEADER + BYTES_IN_A_DIRECTORY_HOLDING_ONE_ENTRY;
+  const dateValueOffset = exifDirectoryOffset + BYTES_IN_A_DIRECTORY_HOLDING_ONE_ENTRY;
+  const dateValue = Buffer.from(`${dateTimeOriginal}\0`, 'latin1');
+
+  return Buffer.concat([
+    header,
+    directoryHolding([directoryEntry(TIFF_TAG_EXIF_DIRECTORY_POINTER, TIFF_VALUE_TYPE_LONG, 1, exifDirectoryOffset)]),
+    directoryHolding([directoryEntry(TIFF_TAG_DATE_TIME_ORIGINAL, TIFF_VALUE_TYPE_ASCII, dateValue.length, dateValueOffset)]),
+    dateValue,
+  ]);
 }
 
 function jpegMarker(markerByte) {

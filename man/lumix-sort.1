@@ -1,6 +1,6 @@
 .TH LUMIX\-SORT 1 "2026-09-08" "lumix-sort 1.0.0" "User Commands"
 .SH NAME
-lumix\-sort \- sort Panasonic Lumix photos and video
+lumix\-sort \- sort photos and video
 by the day they were shot
 .SH SYNOPSIS
 .B lumix\-sort
@@ -8,11 +8,11 @@ by the day they were shot
 .IR FOLDER ...
 .SH DESCRIPTION
 .B lumix\-sort
-groups photos and video shot on a Panasonic Lumix camera by the day they were
-taken, using the date the camera recorded inside each file rather than anything
-the filesystem claims. It is meant for the folder you get after copying a card:
-point it at that folder and it replaces the camera's
-.I DCIM/100_PANA
+groups photos and video by the day they were taken, using the date the camera
+recorded inside each file rather than anything the filesystem claims. It is
+meant for the folder you get after copying a card: point it at that folder and
+it replaces the camera's
+.I DCIM
 layout with one folder per shooting day.
 .PP
 Files are copied, never moved, unless
@@ -106,13 +106,6 @@ Date none of them that way: every file that records no date inside itself goes
 to
 .IR undated/ .
 .TP
-.BR \-0 ", " \-\-null
-Take the list of files from standard input, separated by NUL bytes as
-.B find \-print0
-writes them, rather than walking a folder. Requires
-.BR \-\-dest ,
-as there is then no folder being sorted in place.
-.TP
 .BR \-v ", " \-\-verbose
 Print every file as it is placed, as
 .RI \(lq source " \-> " destination \(rq.
@@ -155,40 +148,84 @@ with no arguments at all therefore prints the usage text and exits
 .BR 2 .
 .SH FILE TYPES
 Stills:
-.BR JPG ", " JPEG ", " MPO ", " HSP ", " HIF ", " HEIC .
-Raw:
-.BR RW2 ", " RAW ", " RWL ", " DNG ", " TIF ", " TIFF .
+.BR JPG ", " JPEG ", " MPO ", " HSP ", " HIF ", " HEIC ", " THM .
+.PP
+Raw, by the maker that writes it:
+.RS
+.PD 0
+.TP 20
+Panasonic, Leica
+.BR RW2 ", " RAW ", " RWL
+.TP
+Canon
+.B CR2
+.TP
+Nikon
+.BR NEF ", " NRW
+.TP
+Sony
+.BR ARW ", " SR2 ", " SRF
+.TP
+Olympus, OM System
+.B ORF
+.TP
+Pentax, Ricoh
+.B PEF
+.TP
+Others
+.BR SRW ", " ERF ", " 3FR ", " IIQ ", " MOS ", " MEF ", " DCR ", " KDC
+.TP
+Anyone
+.BR DNG ", " TIF ", " TIFF
+.PD
+.RE
+.PP
 Video:
 .BR MP4 ", " MOV ", " MTS ", " M2TS ", " AVI ,
 including 4K and 6K PHOTO clips.
 .PP
 The extension decides only which files are picked up; which parser runs is
 decided by the file's leading bytes, so a mislabelled file still reads
-correctly. Anything else on the card, including AVCHD
+correctly. Every raw above is a TIFF container, so one parser reads them all;
+Olympus and Panasonic simply stamp a different signature in the header.
+Anything else on the card, including AVCHD
 .B .CPI
 sidecars, is left untouched.
+.PP
+Not read yet: Canon
+.BR CR3 " and " CRM ,
+Fujifilm
+.BR RAF ,
+and the EXIF inside HEIF
+.RB ( HIF ", " HEIC ).
+HEIF files are still picked up, so they land in
+.I undated/
+rather than being passed over in silence; CR3 and RAF are not picked up at all.
 .SH HOW THE DATE IS FOUND
 The first of these that answers wins.
 .IP 1. 4
 .B EXIF
 .IR DateTimeOriginal ", " CreateDate " or " ModifyDate ,
-for JPEG and RW2. Both are TIFF containers, so one parser reads both.
+for every still and every raw listed above.
 .IP 2. 4
-.B The JPEG embedded in an RW2
+.B The JPEG embedded in a raw
 (tag 0x2e), for raws that carry the date nowhere else.
 .IP 3. 4
 .B moov/mvhd
 in MP4 and MOV, read verbatim. The specification calls that field UTC, but
 Panasonic writes the clock the camera is set to, so no conversion is applied.
 Video is therefore filed exactly as stills are, by the camera's own clock, and
-neither depends on the timezone of the machine doing the sorting.
+neither depends on the timezone of the machine doing the sorting. Canon, Nikon
+and Apple do often write UTC in that field, so video from those cameras is
+currently filed by a shifted clock.
 .IP 4. 4
 .BR "A sibling frame" :
-the JPEG beside an RW2 of the same shot, matched on folder and file number.
+the JPEG beside a raw of the same shot, or the THM beside a Canon AVI, matched
+on folder and file name.
 .IP 5. 4
 .BR "The file's own timestamp" ,
-for AVCHD clips and HLG photos, which hold no date internally. Days containing
-such files are marked
+for AVCHD clips, HLG photos and HEIF stills, which hold no date this reads.
+Days containing such files are marked
 .B ~
 in the summary.
 .PP
@@ -275,9 +312,6 @@ Put a year level above the days.
 .TP
 .B lumix\-sort \-\-day\-start 4 ~/Import
 Keep a shoot that ran past midnight in the day it began.
-.TP
-.B find ~/Import \-name '*.RW2' \-print0 | lumix\-sort \-0 \-d ~/Raw
-Sort only the raw files, into their own tree.
 .SH ENVIRONMENT
 .TP
 .B TZ

@@ -5,7 +5,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  buildCardDump, writeFixtureFile, tiffFile, jpegFile, PANASONIC_RAW_SIGNATURE,
+  buildCardDump, writeFixtureFile, tiffFile, jpegFile, bigEndianTiffFile,
+  PANASONIC_RAW_SIGNATURE, TIFF_STANDARD_SIGNATURE,
+  OLYMPUS_RAW_SIGNATURE, OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES,
   jpegFileWithARestartMarkerFirst, jpegFileBuriedUnderManySegments, movieFileWhoseMovieBoxRunsToTheEnd,
 } from './fixtures.mjs';
 import { readTimestampFromFile } from '../src/date.mjs';
@@ -216,6 +218,70 @@ function containersThatAreLegalButUnusual() {
   fs.chmodSync(unreadable, 0o644);
 }
 
+function theRawEveryMakerWrites() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'brands-'));
+  const dateOf = (fileName, contents) => {
+    const filePath = path.join(dump, fileName);
+    writeFixtureFile(filePath, contents);
+    return readTimestampFromFile(filePath, fs.statSync(filePath).size)?.timestamp ?? null;
+  };
+  const ordinaryTiff = (dateTimeOriginal) => tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal });
+  const olympusRaw = (signature, dateTimeOriginal) => tiffFile({ signature, dateTimeOriginal });
+
+  const rawFromEachMaker = [
+    ['a Canon CR2', 'IMG_0001.CR2', ordinaryTiff('2026:08:27 09:00:00'), '2026-08-27 09:00:00'],
+    ['a Nikon NEF', 'DSC_0001.NEF', ordinaryTiff('2026:08:27 09:01:00'), '2026-08-27 09:01:00'],
+    ['a Nikon NRW', 'DSC_0002.NRW', ordinaryTiff('2026:08:27 09:02:00'), '2026-08-27 09:02:00'],
+    ['a Sony ARW', 'DSC00001.ARW', ordinaryTiff('2026:08:27 09:03:00'), '2026-08-27 09:03:00'],
+    ['a Pentax PEF', 'IMGP0001.PEF', ordinaryTiff('2026:08:27 09:04:00'), '2026-08-27 09:04:00'],
+    ['an Olympus ORF', 'P8270001.ORF', olympusRaw(OLYMPUS_RAW_SIGNATURE, '2026:08:27 09:05:00'), '2026-08-27 09:05:00'],
+    ['an OM System ORF', 'P8270002.ORF', olympusRaw(OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES, '2026:08:27 09:06:00'), '2026-08-27 09:06:00'],
+  ];
+  for (const [whatItIs, fileName, contents, whenItWasShot] of rawFromEachMaker) {
+    expect(`${whatItIs} is read for the date the camera wrote in it`, dateOf(fileName, contents) === whenItWasShot);
+  }
+
+  expect('a raw written most significant byte first is read the same as one written the other way round',
+    dateOf('DSC_0003.NEF', bigEndianTiffFile('2026:08:27 09:07:00')) === '2026-08-27 09:07:00');
+  expect('a file whose signature belongs to no camera is left alone rather than guessed at',
+    dateOf('spreadsheet.tif', tiffFile({ signature: 0x1234, dateTimeOriginal: '2026:08:27 09:08:00' })) === null);
+}
+
+function aCardFromAnotherMakerSortsToo() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'other-maker-'));
+  const canonFolder = path.join(dump, 'DCIM', '100CANON');
+  const olympusFolder = path.join(dump, 'DCIM', '100OLYMP');
+  const shotTogether = '2026:08:27 09:07:01';
+
+  writeFixtureFile(path.join(canonFolder, 'IMG_0001.CR2'),
+    tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal: shotTogether }));
+  writeFixtureFile(path.join(canonFolder, 'IMG_0001.JPG'), jpegFile(shotTogether));
+  writeFixtureFile(path.join(canonFolder, 'MVI_0002.AVI'), Buffer.alloc(512, 4));
+  writeFixtureFile(path.join(canonFolder, 'MVI_0002.THM'), jpegFile('2026:08:28 11:30:00'));
+  writeFixtureFile(path.join(olympusFolder, 'P8270003.ORF'),
+    tiffFile({ signature: OLYMPUS_RAW_SIGNATURE, dateTimeOriginal: '2026:08:27 18:00:00' }));
+
+  const plan = runCommand(['-n', '--json', dump]);
+  expect('an AVI that records no date of its own takes it from the THM sitting beside it',
+    folderChosenFor(plan.standardOutput, 'MVI_0002.AVI') === '2026-08-28'
+    && JSON.parse(plan.standardOutput).actions
+      .find((action) => action.src.endsWith('MVI_0002.AVI')).dateFrom === DATE_SOURCE.siblingFile,
+    plan.standardOutput);
+
+  const sorted = runCommand(['--move', dump]);
+  expect('a card holding Canon and Olympus files sorts by the dates inside them, and exits 0',
+    sorted.exitCode === EXIT_EVERYTHING_PLACED, sorted.standardOutput + sorted.standardError);
+  expect('and every one of them lands in the day its own camera recorded',
+    visibleFilesUnder(dump).join('\n') === [
+      '2026-08-27/IMG_0001.CR2',
+      '2026-08-27/IMG_0001.JPG',
+      '2026-08-27/P8270003.ORF',
+      '2026-08-28/MVI_0002.AVI',
+      '2026-08-28/MVI_0002.THM',
+    ].join('\n'),
+    visibleFilesUnder(dump).join('\n'));
+}
+
 function whenTheFilesystemRefuses() {
   const dump = freshCardDump('unwritable-destination');
   const destination = path.join(temporaryDirectory, 'unwritable-library');
@@ -339,14 +405,6 @@ function theOtherWaysToRunIt() {
     new Set(parsed.actions.map((action) => action.dateFrom)).size >= 3,
     [...new Set(parsed.actions.map((action) => action.dateFrom))].join(', '));
 
-  const rawOnly = path.join(temporaryDirectory, 'raw-only');
-  const rawPaths = filesUnder(dump)
-    .filter((filePath) => filePath.endsWith('.RW2'))
-    .map((filePath) => path.join(dump, filePath))
-    .join('\0');
-  const fromStandardInput = runCommand(['-0', '-d', rawOnly], { input: rawPaths });
-  expect('a NUL-separated file list on standard input is accepted',
-    filesUnder(rawOnly).length === 3, fromStandardInput.standardOutput + fromStandardInput.standardError);
 }
 
 function theCommandLineItself() {
@@ -374,8 +432,8 @@ function theCommandLineItself() {
   expect('a --layout holding no date escape is refused as such',
     /--layout must be a relative folder name/.test(refusedFor(['--layout', 'photos', emptyFolder])),
     refusedFor(['--layout', 'photos', emptyFolder]));
-  expect('a file list on standard input without --dest says why',
-    /standard input needs --dest/.test(refusedFor(['-0'])), refusedFor(['-0']));
+  expect('the -0 that used to take a file list on standard input is now just an unknown option',
+    /unrecognised option '-0'/.test(refusedFor(['-0'])), refusedFor(['-0']));
   expect('--verbose together with --quiet is refused for contradicting, not for anything else',
     /--verbose and --quiet contradict each other/.test(refusedFor(['--verbose', '--quiet', emptyFolder])),
     refusedFor(['--verbose', '--quiet', emptyFolder]));
@@ -541,6 +599,8 @@ twoPhotosOnOneDaySharingAName();
 twoCardFoldersReusingTheSameFileNumber();
 nothingIsWrittenUntilTheWholePlanIsSettled();
 containersThatAreLegalButUnusual();
+theRawEveryMakerWrites();
+aCardFromAnotherMakerSortsToo();
 whenTheFilesystemRefuses();
 theCameraClockIsTheOnlyClock();
 aCardCopiedWithoutPreservingTimes();

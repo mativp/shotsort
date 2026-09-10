@@ -30,13 +30,12 @@ const BYTES_PER_UNIT_STEP = 1024;
 const FILE_COUNT_COLUMN_WIDTH = 5;
 const BYTE_SIZE_COLUMN_WIDTH = 10;
 const BROKEN_PIPE_ERROR_CODE = 'EPIPE';
-const STANDARD_INPUT_FILE_DESCRIPTOR = 0;
 
 const USAGE = `Usage: ${PROGRAM_NAME} [OPTION]... FOLDER...
 
-Sort Panasonic Lumix photos and video into one folder per shooting day, using
-the date the camera recorded inside each file. Files are copied, never moved,
-unless you ask for --move, so the originals survive a mistake.
+Sort photos and video into one folder per shooting day, using the date the
+camera recorded inside each file. Files are copied, never moved, unless you
+ask for --move, so the originals survive a mistake.
 
 Every file is examined and its destination decided before anything is written,
 so nothing moves until the whole plan is settled. --dry-run prints that plan.
@@ -80,9 +79,9 @@ Every file is filed under the clock the camera was set to when it was taken,
 stills and video alike, so the folder a file lands in never depends on where
 the computer sorting it happens to be.
 
-AVCHD clips and HLG photos are the one gap: they record no date inside them at
-all. The only date left for those is the one the filesystem keeps, which is the
-real shooting time when the copy off the card preserved it, and meaningless
+Some files record no date this can read: AVCHD clips, HLG photos and HEIF
+stills. The only date left for those is the one the filesystem keeps, which is
+the real shooting time when the copy off the card preserved it, and meaningless
 when it did not, because cp without -p replaces it with the moment of the copy.
 So by default the filesystem date is used for such a file only when it still
 looks like a shooting time, and the file goes to ${UNDATED_FOLDER_NAME}/ when it does not.
@@ -96,10 +95,6 @@ These two settle it by hand instead:
                         date none of them that way: every file that records no
                         date inside itself goes to ${UNDATED_FOLDER_NAME}/
 
-  -0, --null            take the list of files from standard input, separated
-                        by NUL bytes as find -print0 writes them, rather than
-                        walking a folder. Requires --dest, as there is then no
-                        folder being sorted in place
   -v, --verbose         print every file as it is placed, as
                         "source -> destination". Files already in the right
                         place are not printed
@@ -114,7 +109,11 @@ These two settle it by hand instead:
 Short options may be run together: -nv is -n -v. A -- argument ends option
 parsing.
 
-Reads JPEG, RW2, RAW, RWL, DNG, MPO, HSP, TIFF, MP4, MOV, MTS, M2TS and AVI.
+Reads JPEG, TIFF and MPO stills; DNG and the raw of Panasonic (RW2), Canon
+(CR2), Nikon (NEF, NRW), Sony (ARW, SR2), Olympus and OM System (ORF) and
+Pentax (PEF); and MP4, MOV, MTS, M2TS and AVI video. A Canon THM sidecar dates
+the clip beside it. Canon CR3 and Fujifilm RAF are not read yet.
+
 Nothing is ever overwritten. When one day holds two different photos with the
 same file name, as happens when a card's numbering wraps or two card folders
 are copied together, each goes into a numbered subfolder of that day instead:
@@ -157,9 +156,7 @@ Examples:
 
   ${PROGRAM_NAME} -v -m ~/Import
         Sort ~/Import, printing every file as it moves.
-
-  find ~/Import -name '*.RW2' -print0 | ${PROGRAM_NAME} -0 -d ~/Raw
-        Sort only the raw files, into a tree of their own.`;
+`;
 
 function exitWithUsageError(problem) {
   console.error(`${PROGRAM_NAME}: ${problem}\nTry '${PROGRAM_NAME} --help'.`);
@@ -194,8 +191,6 @@ function parseCommandLine(commandLineArguments) {
     layout: DEFAULT_LAYOUT,
     hourTheDayStartsAt: 0,
     filesystemDateUse: FILESYSTEM_DATE_USE.onlyWhenItStillLooksLikeAShootingTime,
-    readPathsFromStandardInput: false,
-    standardInputIsNulSeparated: false,
     verbose: false,
     quiet: false,
     json: false,
@@ -210,17 +205,11 @@ function parseCommandLine(commandLineArguments) {
     return commandLineArguments[argumentIndex];
   };
 
-  const takeFileListFromStandardInput = () => {
-    options.standardInputIsNulSeparated = true;
-    options.readPathsFromStandardInput = true;
-  };
-
   const applyShortOption = (letter) => {
     if (letter === 'n') options.dryRun = true;
     else if (letter === 'm') options.moveInsteadOfCopying = true;
     else if (letter === 'v') options.verbose = true;
     else if (letter === 'q') options.quiet = true;
-    else if (letter === '0') takeFileListFromStandardInput();
     else if (letter === 'd') options.destination = nextArgumentAsValue('-d');
     else if (letter === 's') options.inputPaths.push(nextArgumentAsValue('-s'));
     else if (letter === 'h') printUsageAndExit(EXIT_CODE.everythingPlaced);
@@ -237,7 +226,6 @@ function parseCommandLine(commandLineArguments) {
     else if (optionName === '--verbose') options.verbose = true;
     else if (optionName === '--quiet') options.quiet = true;
     else if (optionName === '--json') options.json = true;
-    else if (optionName === '--null') takeFileListFromStandardInput();
     else if (optionName === '--use-filesystem-date') options.filesystemDateUse = FILESYSTEM_DATE_USE.always;
     else if (optionName === '--ignore-filesystem-date') options.filesystemDateUse = FILESYSTEM_DATE_USE.never;
     else if (optionName === '--dest') options.destination = nextArgumentAsValue(optionName);
@@ -252,9 +240,8 @@ function parseCommandLine(commandLineArguments) {
   for (; argumentIndex < commandLineArguments.length; argumentIndex++) {
     const argument = commandLineArguments[argumentIndex];
 
-    if (everythingLeftIsAPath || !argument.startsWith('-') || argument === '-') {
-      if (argument === '-') options.readPathsFromStandardInput = true;
-      else options.inputPaths.push(argument);
+    if (everythingLeftIsAPath || !argument.startsWith('-')) {
+      options.inputPaths.push(argument);
     } else if (argument === '--') {
       everythingLeftIsAPath = true;
     } else if (argument.startsWith('--')) {
@@ -288,22 +275,11 @@ function validatedOptions(options) {
   if (options.verbose && options.quiet) {
     exitWithUsageError('--verbose and --quiet contradict each other');
   }
-  if (options.readPathsFromStandardInput && options.destination === null) {
-    exitWithUsageError('reading a file list from standard input needs --dest, as there is no folder being sorted');
-  }
-  const noFolderToSort = options.inputPaths.length === 0 && !options.readPathsFromStandardInput;
+  const noFolderToSort = options.inputPaths.length === 0;
   if (noFolderToSort) {
     exitWithUsageError(`name the folder to sort, for example: ${PROGRAM_NAME} ~/Import`);
   }
   return options;
-}
-
-function readPathsFromStandardInput(nulSeparated) {
-  const separator = nulSeparated ? '\0' : '\n';
-  return fs.readFileSync(STANDARD_INPUT_FILE_DESCRIPTOR, 'utf8')
-    .split(separator)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
 }
 
 function formatByteSize(byteCount) {
@@ -437,10 +413,7 @@ function main() {
   if (commandLineArguments.length === 0) printUsageAndExit(EXIT_CODE.badCommandLine);
 
   const options = parseCommandLine(commandLineArguments);
-  const pathsFromStandardInput = options.readPathsFromStandardInput
-    ? readPathsFromStandardInput(options.standardInputIsNulSeparated)
-    : [];
-  const inputPaths = [...options.inputPaths, ...pathsFromStandardInput];
+  const inputPaths = options.inputPaths;
 
   let mediaFiles;
   try {
@@ -452,7 +425,7 @@ function main() {
 
   if (mediaFiles.length === 0) {
     if (options.json) printJson([], countPlacements([]), 0, options);
-    else console.error(`${PROGRAM_NAME}: no Lumix photos or video found`);
+    else console.error(`${PROGRAM_NAME}: no photos or video found`);
     process.exit(EXIT_CODE.somethingFailedOrNothingFound);
   }
 
