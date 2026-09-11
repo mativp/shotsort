@@ -191,6 +191,14 @@ export function jpegFileBuriedUnderManySegments(dateTimeOriginal) {
   return Buffer.concat([jpegMarker(JPEG_MARKER_START_OF_IMAGE), ...filler, afterTheStartOfImage]);
 }
 
+export function jpegFilePaddedTo(dateTimeOriginal, totalBytes) {
+  const complete = jpegFile(dateTimeOriginal);
+  if (totalBytes < complete.length) {
+    throw new Error(`a jpeg carrying a date cannot be smaller than ${complete.length} bytes`);
+  }
+  return Buffer.concat([complete, Buffer.alloc(totalBytes - complete.length)]);
+}
+
 export function panasonicRawWithDateOnlyInEmbeddedJpeg(dateTimeOriginal) {
   const embeddedJpeg = jpegFile(dateTimeOriginal);
   const mainDirectoryOffset = BYTES_IN_TIFF_HEADER;
@@ -429,6 +437,120 @@ export function movieFileWithAnAppleCreationDate(mvhdClock, spelledOutDate) {
   const itemList = isoBox('ilst', isoBox(bigEndianUInt32(1).toString('latin1'), value));
   const metadata = isoFullBox('meta', 0, Buffer.concat([isoBox('hdlr', Buffer.alloc(24)), keys, itemList]));
   return movieFile(mvhdClock, { extraMovieBoxes: metadata });
+}
+
+const SECONDS_BETWEEN_1970_AND_1904 = 2082844800;
+const CIFF_HEADER_BYTES = 26;
+const CIFF_TAG_CAPTURE_TIME = 0x180e;
+const CIFF_TAG_IMAGE_PROPERTIES = 0x2807;
+const BYTES_PER_CIFF_DIRECTORY_ENTRY = 10;
+const BYTES_IN_A_CIFF_CAPTURE_TIME = 12;
+const SIGMA_PROPERTY_SECTION_HEADER_BYTES = 24;
+const BYTES_PER_SIGMA_PROPERTY_ENTRY = 8;
+const BYTES_PER_SIGMA_DIRECTORY_ENTRY = 12;
+
+const secondsSince1970For = (cameraClock) => {
+  const [year, month, day, hour, minute, second] = cameraClock.split(/[-: ]/).map(Number);
+  return Date.UTC(year, month - 1, day, hour, minute, second) / MILLISECONDS_PER_SECOND;
+};
+
+export function minoltaRawFile(dateTimeOriginal) {
+  const minoltaBlock = (blockType, body) => {
+    const header = Buffer.alloc(8);
+    header.write(blockType, 0, 'latin1');
+    header.writeUInt32BE(body.length, 4);
+    return Buffer.concat([header, body]);
+  };
+  const thumbnail = minoltaBlock('\0PRD', Buffer.alloc(24, 3));
+  const exifBlock = minoltaBlock('\0TTW', bigEndianTiffFile(dateTimeOriginal));
+  const whiteBalance = minoltaBlock('\0WBG', Buffer.alloc(16, 4));
+  const body = Buffer.concat([thumbnail, exifBlock, whiteBalance]);
+  return Buffer.concat([minoltaBlock('\0MRM', Buffer.alloc(0)).subarray(0, 4),
+    (() => { const b = Buffer.alloc(4); b.writeUInt32BE(body.length, 0); return b; })(),
+    body, Buffer.alloc(64, 5)]);
+}
+
+export function canonCiffRawFile(cameraClock) {
+  const captureTime = Buffer.alloc(BYTES_IN_A_CIFF_CAPTURE_TIME);
+  captureTime.writeUInt32LE(secondsSince1970For(cameraClock), 0);
+  captureTime.writeInt32LE(0, 4);
+  captureTime.writeUInt32LE(0, 8);
+
+  // A heap is its data, then its directory, then a pointer back to that directory.
+  const heapHolding = (entries, data) => {
+    const count = Buffer.alloc(2);
+    count.writeUInt16LE(entries.length, 0);
+    const directory = Buffer.concat([count, ...entries, Buffer.alloc(4)]);
+    const pointer = Buffer.alloc(4);
+    pointer.writeUInt32LE(data.length, 0);
+    return Buffer.concat([data, directory, pointer]);
+  };
+  const entry = (tag, length, offset) => {
+    const buffer = Buffer.alloc(BYTES_PER_CIFF_DIRECTORY_ENTRY);
+    buffer.writeUInt16LE(tag, 0);
+    buffer.writeUInt32LE(length, 2);
+    buffer.writeUInt32LE(offset, 6);
+    return buffer;
+  };
+
+  const innerHeap = heapHolding([entry(CIFF_TAG_CAPTURE_TIME, captureTime.length, 0)], captureTime);
+  const outerHeap = heapHolding([entry(CIFF_TAG_IMAGE_PROPERTIES, innerHeap.length, 0)], innerHeap);
+
+  const header = Buffer.alloc(CIFF_HEADER_BYTES);
+  header.write(TIFF_LITTLE_ENDIAN_MARK, 0, 'latin1');
+  header.writeUInt32LE(CIFF_HEADER_BYTES, 2);
+  header.write('HEAPCCDR', 6, 'latin1');
+  header.writeUInt32LE(0x00010002, 14);
+  return Buffer.concat([header, outerHeap]);
+}
+
+export function sigmaRawFile(cameraClock) {
+  const twoByteWide = (text) => Buffer.from(`${text}\0`, 'utf16le');
+  const names = ['CAMMANUF', 'TIME', 'SHUTTER'];
+  const values = ['SIGMA', String(secondsSince1970For(cameraClock)), '1/250'];
+
+  const text = [];
+  const table = Buffer.alloc(names.length * BYTES_PER_SIGMA_PROPERTY_ENTRY);
+  let charactersSoFar = 0;
+  names.forEach((name, propertyIndex) => {
+    const nameText = twoByteWide(name);
+    const valueText = twoByteWide(values[propertyIndex]);
+    table.writeUInt32LE(charactersSoFar, propertyIndex * BYTES_PER_SIGMA_PROPERTY_ENTRY);
+    charactersSoFar += nameText.length / 2;
+    table.writeUInt32LE(charactersSoFar, propertyIndex * BYTES_PER_SIGMA_PROPERTY_ENTRY + 4);
+    charactersSoFar += valueText.length / 2;
+    text.push(nameText, valueText);
+  });
+
+  const propertyHeader = Buffer.alloc(SIGMA_PROPERTY_SECTION_HEADER_BYTES);
+  propertyHeader.write('SECp', 0, 'latin1');
+  propertyHeader.writeUInt32LE(1, 4);
+  propertyHeader.writeUInt32LE(names.length, 8);
+  propertyHeader.writeUInt32LE(0, 12);
+  propertyHeader.writeUInt32LE(0, 16);
+  propertyHeader.writeUInt32LE(charactersSoFar, 20);
+  const propertySection = Buffer.concat([propertyHeader, table, ...text]);
+
+  const fileHeader = Buffer.alloc(64);
+  fileHeader.write('FOVb', 0, 'latin1');
+  fileHeader.writeUInt32LE(0x00030000, 4);
+  const propertySectionStart = fileHeader.length;
+
+  const directoryEntry = Buffer.alloc(BYTES_PER_SIGMA_DIRECTORY_ENTRY);
+  directoryEntry.writeUInt32LE(propertySectionStart, 0);
+  directoryEntry.writeUInt32LE(propertySection.length, 4);
+  directoryEntry.write('PROP', 8, 'latin1');
+
+  const directoryHeader = Buffer.alloc(12);
+  directoryHeader.write('SECd', 0, 'latin1');
+  directoryHeader.writeUInt32LE(1, 4);
+  directoryHeader.writeUInt32LE(1, 8);
+  const directory = Buffer.concat([directoryHeader, directoryEntry]);
+
+  const directoryStart = propertySectionStart + propertySection.length;
+  const pointer = Buffer.alloc(4);
+  pointer.writeUInt32LE(directoryStart, 0);
+  return Buffer.concat([fileHeader, propertySection, directory, pointer]);
 }
 
 export function buildCardDump(directory, { everyFileStampedAt = null } = {}) {

@@ -30,6 +30,7 @@ const BYTES_PER_UNIT_STEP = 1024;
 const FILE_COUNT_COLUMN_WIDTH = 5;
 const BYTE_SIZE_COLUMN_WIDTH = 10;
 const BROKEN_PIPE_ERROR_CODE = 'EPIPE';
+const SHORT_OPTIONS_THAT_TAKE_A_VALUE = new Set(['s', 'd']);
 
 const USAGE = `Usage: ${PROGRAM_NAME} [OPTION]... FOLDER...
 
@@ -112,11 +113,12 @@ These two settle it by hand instead:
 Short options may be run together: -nv is -n -v. A -- argument ends option
 parsing.
 
-Reads JPEG, TIFF, MPO and HEIF stills; DNG and the raw of Panasonic (RW2),
-Canon (CR2, CR3), Nikon (NEF, NRW), Sony (ARW, SR2), Olympus and OM System
-(ORF), Fujifilm (RAF) and Pentax (PEF); and MP4, MOV, MTS, M2TS and AVI video.
-A Canon THM sidecar dates the clip beside it, as does a JPEG on another card
-slot when only one shot on the card goes by that name.
+Reads JPEG, TIFF, MPO, HEIF and AVIF stills; DNG and the raw of Panasonic
+(RW2), Canon (CR2, CR3, CRW), Nikon (NEF, NRW), Sony (ARW, ARQ, SR2), Olympus
+and OM System (ORF), Fujifilm (RAF), Pentax (PEF), Minolta (MRW) and Sigma
+(X3F); and MP4, MOV, M4V, 3GP, MTS, M2TS, AVI and the clips action cameras and
+drones write. A Canon THM sidecar dates the clip beside it, as does a JPEG on
+another card slot when only one shot on the card goes by that name.
 
 Nothing is ever overwritten. When one day holds two different photos with the
 same file name, as happens when a card's numbering wraps or two card folders
@@ -219,9 +221,18 @@ function parseCommandLine(commandLineArguments) {
     else if (letter === 'h') printUsageAndExit(EXIT_CODE.everythingPlaced);
     else if (letter === 'V') printVersionAndExit();
     else exitWithUsageError(`unrecognised option '-${letter}'`);
+  };
 
-    const thisLetterTookTheNextArgument = letter === 'd' || letter === 's';
-    return thisLetterTookTheNextArgument;
+  const applyClusteredShortOptions = (cluster) => {
+    const letters = cluster.slice(1);
+    for (let position = 0; position < letters.length; position++) {
+      const letter = letters[position];
+      const isTheLastLetter = position === letters.length - 1;
+      if (SHORT_OPTIONS_THAT_TAKE_A_VALUE.has(letter) && !isTheLastLetter) {
+        exitWithUsageError(`option '-${letter}' takes a value, so it has to be the last letter of '${cluster}'`);
+      }
+      applyShortOption(letter);
+    }
   };
 
   const applyLongOption = (optionName) => {
@@ -251,9 +262,7 @@ function parseCommandLine(commandLineArguments) {
     } else if (argument.startsWith('--')) {
       applyLongOption(argument);
     } else {
-      for (const letter of argument.slice(1)) {
-        if (applyShortOption(letter)) break;
-      }
+      applyClusteredShortOptions(argument);
     }
   }
   return validatedOptions(options);

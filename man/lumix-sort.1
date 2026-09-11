@@ -148,7 +148,7 @@ with no arguments at all therefore prints the usage text and exits
 .BR 2 .
 .SH FILE TYPES
 Stills:
-.BR JPG ", " JPEG ", " MPO ", " HSP ", " HIF ", " HEIC ", " THM .
+.BR JPG ", " JPEG ", " MPO ", " HSP ", " HIF ", " HEIC ", " AVIF ", " THM .
 .PP
 Raw, by the maker that writes it:
 .RS
@@ -158,7 +158,7 @@ Panasonic, Leica
 .BR RW2 ", " RAW ", " RWL
 .TP
 Canon
-.BR CR2 ", " CR3 ", " CRM
+.BR CR2 ", " CR3 ", " CRM ", " CRW
 .TP
 Fujifilm
 .B RAF
@@ -167,7 +167,10 @@ Nikon
 .BR NEF ", " NRW
 .TP
 Sony
-.BR ARW ", " SR2 ", " SRF
+.BR ARW ", " ARQ ", " SR2 ", " SRF
+.TP
+Minolta, Sigma
+.BR MRW ", " X3F
 .TP
 Olympus, OM System
 .B ORF
@@ -184,29 +187,45 @@ Anyone
 .RE
 .PP
 Video:
-.BR MP4 ", " MOV ", " MTS ", " M2TS ", " AVI ,
-including 4K and 6K PHOTO clips.
+.BR MP4 ", " MOV ", " M4V ", " 3GP ", " MTS ", " M2TS ", " AVI ", " LRV ", " INSV ", " 360 ,
+including 4K and 6K PHOTO clips and the proxies action cameras and drones
+write alongside them.
 .PP
 The extension decides only which files are picked up; which parser runs is
 decided by the file's leading bytes, so a mislabelled file still reads
 correctly. Most of those raws are a TIFF container and one parser reads them
 all; Olympus and Panasonic simply stamp a different signature in the header,
-and BigTIFF widens every count and offset from four bytes to eight. Three keep
-their EXIF elsewhere and each is found and then handed to that same parser:
-Canon CR3 and CRM bury a TIFF block in
+and BigTIFF widens every count and offset from four bytes to eight. Four more
+wrap a TIFF block somewhere else and hand it to that same parser: Canon CR3
+and CRM
+bury one in
 .IR moov/uuid/CMT2 ,
-HEIF stores one as an item the
+HEIF and AVIF store one as an item the
 .I meta
-box points at, and Fujifilm RAF gives the offset of a complete JPEG in bytes
-84\-87 of its header. Anything else on the card, including AVCHD
+box points at, Fujifilm RAF gives the offset of a complete JPEG in bytes
+84\-87 of its header, and Minolta MRW wraps one in a
+.B \(rs0TTW
+block.
+.PP
+Two predate all of that and keep a plain Unix timestamp instead: Canon CRW
+holds one in the CIFF heap its trailing pointer leads to, and Sigma X3F as a
+.B TIME
+property in a UTF\-16 property list. Both are read as the camera's own clock and
+both are checked for a plausible year, so a misread yields no date rather than
+a wrong one. Anything else on the card, including AVCHD
 .B .CPI
 sidecars, is left untouched.
 .PP
 Not read yet: AVCHD clips
 .RB ( MTS ", " M2TS )
 and HLG photos
-.RB ( HSP ).
-Both record no date this can read.
+.RB ( HSP ),
+neither of which records a date this can read. Also unread, and unlikely to
+change: the cinema containers
+.BR MXF ", " BRAW " and " R3D ,
+and Matroska
+.BR MKV ,
+whose only standard date is UTC with no local clock to recover from it.
 .SH HOW THE DATE IS FOUND
 The first of these that answers wins.
 .IP 1. 4

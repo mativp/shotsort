@@ -176,11 +176,13 @@ duplicate rather than a clash, so they collapse into one file.
 
 ## What it reads
 
-Stills: JPEG, MPO, TIFF, HSP, HIF, HEIC, and Canon THM sidecars.
-Raw: RW2, RAW, RWL (Panasonic), CR2, CR3, CRM (Canon), NEF, NRW (Nikon), ARW,
-SR2, SRF (Sony), ORF (Olympus, OM System), RAF (Fujifilm), PEF (Pentax), SRW,
-ERF, 3FR, IIQ, MOS, MEF, DCR, KDC, and DNG from anyone.
-Video: MP4, MOV, MTS, M2TS, AVI.
+Stills: JPEG, MPO, TIFF, HSP, HIF, HEIC, AVIF, and Canon THM sidecars.
+Raw: RW2, RAW, RWL (Panasonic), CR2, CR3, CRM, CRW (Canon), NEF, NRW (Nikon),
+ARW, ARQ, SR2, SRF (Sony), ORF (Olympus, OM System), RAF (Fujifilm), PEF
+(Pentax), MRW (Minolta), X3F (Sigma), SRW, ERF, 3FR, IIQ, MOS, MEF, DCR, KDC,
+and DNG from anyone.
+Video: MP4, MOV, M4V, 3GP, MTS, M2TS, AVI, and the LRV, INSV and 360 clips
+action cameras and drones write.
 
 The extension decides only which files are picked up; which parser runs is
 decided by the file's leading bytes, so a mislabelled file still reads
@@ -188,13 +190,22 @@ correctly.
 
 Most of those raws are a TIFF container and one parser reads them all — Olympus
 and Panasonic simply stamp a different signature in the header, and BigTIFF
-widens every count and offset from four bytes to eight. Three keep their EXIF
-somewhere else, and each is found and then handed to that same parser: Canon
-CR3 and CRM bury a TIFF block in `moov/uuid/CMT2`, HEIF stores one as an item
-the `meta` box points at, and Fujifilm RAF gives the offset of a complete JPEG
-in bytes 84–87 of its header.
+widens every count and offset from four bytes to eight. Four more wrap a TIFF
+block somewhere else and hand it to that same parser: Canon CR3 and CRM bury
+one in `moov/uuid/CMT2`, HEIF and AVIF store one as an item the `meta` box
+points at, Fujifilm RAF gives the offset of a complete JPEG in bytes 84–87 of
+its header, and Minolta MRW wraps one in a `\0TTW` block.
 
-**Not read yet:** AVCHD clips (`.MTS`, `.M2TS`) and HLG photos (`.HSP`).
+Two predate all of that and keep a plain Unix timestamp instead: Canon CRW
+holds one in the CIFF heap its trailing pointer leads to, and Sigma X3F as a
+`TIME` property in a UTF-16 property list. Both are read as the camera's own
+clock and both are checked for a plausible year, so a misread yields no date
+rather than a wrong one.
+
+**Not read yet:** AVCHD clips (`.MTS`, `.M2TS`) and HLG photos (`.HSP`). Also
+unread, and unlikely to change: the cinema containers `.MXF`, `.BRAW` and
+`.R3D`, and Matroska `.MKV`, whose only standard date is UTC with no local
+clock to recover.
 
 The date comes from the first of these that answers:
 

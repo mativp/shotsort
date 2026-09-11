@@ -9,8 +9,10 @@ import {
   PANASONIC_RAW_SIGNATURE, TIFF_STANDARD_SIGNATURE,
   OLYMPUS_RAW_SIGNATURE, OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES,
   jpegFileWithARestartMarkerFirst, jpegFileBuriedUnderManySegments, movieFileWhoseMovieBoxRunsToTheEnd,
+  jpegFilePaddedTo,
   movieFile, canonRawFile, fujifilmRawFile, heifStill, bigTiffFile,
   movieFileSayingWhichZoneItsClockIsIn, movieFileCarryingACanonThumbnail, movieFileWithAnAppleCreationDate,
+  minoltaRawFile, canonCiffRawFile, sigmaRawFile,
 } from './fixtures.mjs';
 import { readTimestampFromFile } from '../src/date.mjs';
 import { PLACEMENT, FILESYSTEM_DATE_USE, UNDATED_FOLDER_NAME } from '../src/sort.mjs';
@@ -318,6 +320,32 @@ function theContainersThatHoldTheirExifSomewhereElse() {
     dateOf('L1000002.DNG', bigTiffFile(shotAt, { bigEndian: true })) === whenItWasShot);
 }
 
+function theRawFormatsThatPredateTiff() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'legacy-'));
+  const dateOf = (fileName, contents) => {
+    const filePath = path.join(dump, fileName);
+    writeFixtureFile(filePath, contents);
+    return readTimestampFromFile(filePath, fs.statSync(filePath).size)?.timestamp ?? null;
+  };
+  const whenItWasShot = '2026-08-27 09:07:01';
+
+  expect('a Minolta MRW is read from the TIFF block it wraps',
+    dateOf('PICT0001.MRW', minoltaRawFile('2026:08:27 09:07:01')) === whenItWasShot);
+  expect('a Canon CRW is read from the capture time in its CIFF heap, nested directory and all',
+    dateOf('CRW_0001.CRW', canonCiffRawFile(whenItWasShot)) === whenItWasShot);
+  expect('a Sigma X3F is read from the TIME property in its property list',
+    dateOf('SDIM0001.X3F', sigmaRawFile(whenItWasShot)) === whenItWasShot);
+
+  const aCrwThatIsNotReallyOne = Buffer.alloc(128);
+  aCrwThatIsNotReallyOne.write('II', 0, 'latin1');
+  aCrwThatIsNotReallyOne.writeUInt32LE(26, 2);
+  aCrwThatIsNotReallyOne.write('HEAPCCDR', 6, 'latin1');
+  expect('a CIFF file holding no capture time reports none rather than inventing one',
+    dateOf('CRW_0002.CRW', aCrwThatIsNotReallyOne) === null);
+  expect('and a Sigma raw whose directory pointer leads nowhere does the same',
+    dateOf('SDIM0002.X3F', Buffer.concat([Buffer.from('FOVb', 'latin1'), Buffer.alloc(60, 9)])) === null);
+}
+
 function videoFiledByTheClockTheCameraWasSetTo() {
   const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'video-clocks-'));
   const dateOf = (fileName, contents) => {
@@ -488,6 +516,107 @@ function theOtherWaysToRunIt() {
     new Set(parsed.actions.map((action) => action.dateFrom)).size >= 3,
     [...new Set(parsed.actions.map((action) => action.dateFrom))].join(', '));
 
+}
+
+function theSummaryTheUserReads() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'summary-'));
+  const shotAt = (day, hour) => `2026:01:${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:00:00`;
+
+  writeFixtureFile(path.join(dump, 'a', 'BYTES.JPG'), jpegFilePaddedTo(shotAt(1, 10), 512));
+  writeFixtureFile(path.join(dump, 'a', 'EDGE.JPG'), jpegFilePaddedTo(shotAt(2, 10), 1023));
+  writeFixtureFile(path.join(dump, 'a', 'ONEKB.JPG'), jpegFilePaddedTo(shotAt(3, 10), 1024));
+  writeFixtureFile(path.join(dump, 'a', 'HALF.JPG'), jpegFilePaddedTo(shotAt(4, 10), 1536));
+  writeFixtureFile(path.join(dump, 'a', 'PAIR1.JPG'), jpegFilePaddedTo(shotAt(5, 10), 1024));
+  writeFixtureFile(path.join(dump, 'a', 'PAIR2.JPG'), jpegFilePaddedTo(shotAt(5, 11), 1024));
+  writeFixtureFile(path.join(dump, 'a', 'NODATE.HSP'), Buffer.alloc(2048, 3), new Date('2026-01-06T10:00:00'));
+
+  const rows = runCommand(['-n', dump]).standardOutput.split('\n').filter((line) => /^\d{4}-/.test(line));
+  const rowFor = (day) => rows.find((line) => line.startsWith(day)) ?? `(no row for ${day})`;
+
+  expect('a size under a kilobyte is shown as whole bytes',
+    /\s512 B$/.test(rowFor('2026-01-01')), rowFor('2026-01-01'));
+  expect('one byte below a kilobyte is still shown as bytes',
+    /\s1023 B$/.test(rowFor('2026-01-02')), rowFor('2026-01-02'));
+  expect('exactly a kilobyte steps up to KB with one decimal',
+    /\s1\.0 KB$/.test(rowFor('2026-01-03')), rowFor('2026-01-03'));
+  expect('a size between units keeps its one decimal',
+    /\s1\.5 KB$/.test(rowFor('2026-01-04')), rowFor('2026-01-04'));
+  expect('a day holding one file says file, not files',
+    / {4}1 file {2}/.test(rowFor('2026-01-01')), rowFor('2026-01-01'));
+  expect('a day holding two says files, and their sizes are added',
+    / {4}2 files/.test(rowFor('2026-01-05')) && /\s2\.0 KB$/.test(rowFor('2026-01-05')),
+    rowFor('2026-01-05'));
+  expect('a day dated only by the filesystem is marked with a tilde',
+    /^2026-01-06 ~ /.test(rowFor('2026-01-06')), rowFor('2026-01-06'));
+  expect('a day whose files carry their own dates is not marked',
+    /^2026-01-01 {2}/.test(rowFor('2026-01-01')), rowFor('2026-01-01'));
+  expect('the rows run oldest first',
+    JSON.stringify(rows.map((line) => line.slice(0, 10)))
+      === JSON.stringify([...rows.map((line) => line.slice(0, 10))].sort()),
+    rows.map((line) => line.slice(0, 10)).join(' '));
+  expect('every row is aligned to the same width',
+    new Set(rows.map((line) => line.indexOf(' file'))).size === 1,
+    rows.join('\n'));
+}
+
+function theVerbsInTheClosingLine() {
+  const forRun = (commandArguments) => {
+    const dump = freshCardDump('verbs');
+    return runCommand([...commandArguments, dump]).standardOutput.trim().split('\n').pop();
+  };
+  expect('copying is what a plain run reports',
+    /^11 copied$/.test(forRun([])), forRun([]));
+  expect('moving is what --move reports',
+    /^11 moved,/.test(forRun(['-m'])), forRun(['-m']));
+  expect('a dry run says it would copy, not that it did',
+    /^11 to copy {2}\(dry run\)$/.test(forRun(['-n'])), forRun(['-n']));
+  expect('a dry run with --move says it would move',
+    /^11 to move {2}\(dry run\)$/.test(forRun(['-n', '-m'])), forRun(['-n', '-m']));
+}
+
+function theQuietAndVerboseSwitches() {
+  const quietly = freshCardDump('quiet');
+  const quietRun = runCommand(['-q', quietly]);
+  expect('--quiet prints nothing at all on a run that succeeds',
+    quietRun.standardOutput === '' && quietRun.exitCode === EXIT_EVERYTHING_PLACED,
+    JSON.stringify(quietRun.standardOutput));
+  expect('and still does the sorting',
+    fs.existsSync(path.join(quietly, '2026-08-27', 'P1000002.JPG')));
+
+  const clustered = freshCardDump('clustered');
+  const clusteredRun = runCommand(['-nq', clustered]);
+  expect('clustered short options combine, so -nq is -n and -q together',
+    clusteredRun.standardOutput === ''
+    && clusteredRun.exitCode === EXIT_EVERYTHING_PLACED
+    && fs.existsSync(path.join(clustered, 'DCIM', '100_PANA', 'P1000001.JPG')),
+    JSON.stringify(clusteredRun.standardOutput));
+
+  const longForm = freshCardDump('long-form-dry-run');
+  const longFormRun = runCommand(['--dry-run', longForm]);
+  expect('--dry-run spelled out does the same as -n',
+    /\(dry run\)$/m.test(longFormRun.standardOutput)
+    && fs.existsSync(path.join(longForm, 'DCIM', '100_PANA', 'P1000001.JPG')),
+    longFormRun.standardOutput);
+
+  const valueLast = freshCardDump('value-last');
+  const valueLastDestination = path.join(temporaryDirectory, 'value-last-library');
+  const valueLastRun = runCommand(['-nd', valueLastDestination, valueLast]);
+  expect('a value-taking short option may end a cluster, so -nd DIR is -n -d DIR',
+    /\(dry run\)$/m.test(valueLastRun.standardOutput) && valueLastRun.exitCode === EXIT_EVERYTHING_PLACED,
+    valueLastRun.standardOutput + valueLastRun.standardError);
+
+  const valueNotLast = runCommand(['-sn', valueLast]);
+  expect('but a value-taking short option in the middle of a cluster is refused, not silently ignored',
+    valueNotLast.exitCode === EXIT_BAD_COMMAND_LINE
+    && /option '-s' takes a value, so it has to be the last letter of '-sn'/.test(valueNotLast.standardError),
+    valueNotLast.standardError);
+
+  const clusteredVerbose = freshCardDump('clustered-verbose');
+  const verboseRun = runCommand(['-vm', clusteredVerbose]);
+  expect('and -vm is -v and -m together',
+    verboseRun.standardOutput.split('\n').filter((line) => line.includes(' -> ')).length === 11
+    && !fs.existsSync(path.join(clusteredVerbose, 'DCIM')),
+    verboseRun.standardOutput.slice(0, 200));
 }
 
 function theCommandLineItself() {
@@ -685,12 +814,16 @@ containersThatAreLegalButUnusual();
 theRawEveryMakerWrites();
 aCardFromAnotherMakerSortsToo();
 theContainersThatHoldTheirExifSomewhereElse();
+theRawFormatsThatPredateTiff();
 videoFiledByTheClockTheCameraWasSetTo();
 aRawAndItsJpegOnDifferentCards();
 whenTheFilesystemRefuses();
 theCameraClockIsTheOnlyClock();
 aCardCopiedWithoutPreservingTimes();
 theOtherWaysToRunIt();
+theSummaryTheUserReads();
+theVerbsInTheClosingLine();
+theQuietAndVerboseSwitches();
 theCommandLineItself();
 
 fs.rmSync(temporaryDirectory, { recursive: true, force: true });

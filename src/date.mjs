@@ -1,16 +1,21 @@
 import fs from 'node:fs';
 
-const STILL_IMAGE_EXTENSIONS = ['.JPG', '.JPEG', '.MPO', '.HSP', '.HIF', '.HEIC', '.THM'];
+const STILL_IMAGE_EXTENSIONS = ['.JPG', '.JPEG', '.MPO', '.HSP', '.HIF', '.HEIC', '.AVIF', '.THM'];
 
 const RAW_EXTENSIONS_HOLDING_A_TIFF_DIRECTORY = [
   '.RW2', '.RAW', '.RWL', '.DNG', '.TIF', '.TIFF',
-  '.CR2', '.NEF', '.NRW', '.ARW', '.SR2', '.SRF', '.ORF', '.PEF',
+  '.CR2', '.NEF', '.NRW', '.ARW', '.ARQ', '.SR2', '.SRF', '.ORF', '.PEF',
   '.SRW', '.ERF', '.3FR', '.IIQ', '.MOS', '.MEF', '.DCR', '.KDC',
 ];
 
-const RAW_EXTENSIONS_HOLDING_A_CONTAINER_OF_THEIR_OWN = ['.CR3', '.CRM', '.RAF'];
+const RAW_EXTENSIONS_HOLDING_A_CONTAINER_OF_THEIR_OWN = [
+  '.CR3', '.CRM', '.RAF', '.CRW', '.MRW', '.X3F',
+];
 
-const VIDEO_EXTENSIONS = ['.MP4', '.MOV', '.MTS', '.M2TS', '.AVI'];
+const VIDEO_EXTENSIONS = [
+  '.MP4', '.MOV', '.MTS', '.M2TS', '.AVI',
+  '.M4V', '.3GP', '.LRV', '.INSV', '.360',
+];
 
 export const MEDIA_FILE_EXTENSIONS = new Set([
   ...STILL_IMAGE_EXTENSIONS,
@@ -78,6 +83,39 @@ const BYTES_FROM_SEGMENT_START_TO_TIFF_HEADER = BYTES_FROM_SEGMENT_START_TO_EXIF
 
 const FUJIFILM_RAW_MARK = 'FUJIFILM';
 const BYTES_FROM_RAW_FILE_START_TO_ITS_EMBEDDED_JPEG_POINTER = 84;
+
+const MINOLTA_RAW_MARK = '\0MRM';
+const MINOLTA_BLOCK_HOLDING_A_TIFF = '\0TTW';
+const BYTES_IN_A_MINOLTA_BLOCK_HEADER = 8;
+
+const CANON_CIFF_MARK = 'HEAPCCDR';
+const BYTES_FROM_FILE_START_TO_THE_CIFF_HEAP = 2;
+const BYTES_FROM_FILE_START_TO_THE_CIFF_MARK = 6;
+const CIFF_TAG_CAPTURE_TIME = 0x180e;
+const CIFF_DATA_TYPE_MASK = 0x3800;
+const CIFF_DATA_TYPE_SUBDIRECTORY = 0x2800;
+const BYTES_PER_CIFF_DIRECTORY_ENTRY = 10;
+const BYTES_IN_A_CIFF_DIRECTORY_POINTER = 4;
+const BYTES_IN_A_CIFF_ENTRY_COUNT_FIELD = 2;
+const MOST_ENTRIES_A_REAL_CIFF_DIRECTORY_HAS = 512;
+const DEEPEST_A_REAL_CIFF_DIRECTORY_NESTS = 8;
+
+const SIGMA_RAW_MARK = 'FOVb';
+const SIGMA_DIRECTORY_MARK = 'SECd';
+const SIGMA_PROPERTY_SECTION_MARK = 'SECp';
+const SIGMA_PROPERTY_SECTION_TYPE = 'PROP';
+const SIGMA_CAPTURE_TIME_PROPERTY = 'TIME';
+const BYTES_IN_A_SIGMA_DIRECTORY_POINTER = 4;
+const BYTES_IN_A_SIGMA_DIRECTORY_HEADER = 12;
+const BYTES_PER_SIGMA_DIRECTORY_ENTRY = 12;
+const BYTES_FROM_SIGMA_DIRECTORY_ENTRY_START_TO_ITS_TYPE = 8;
+const BYTES_IN_A_SIGMA_PROPERTY_SECTION_HEADER = 24;
+const BYTES_PER_SIGMA_PROPERTY_ENTRY = 8;
+const BYTES_FROM_A_SECTION_START_TO_ITS_COUNT = 8;
+const BYTES_PER_SIGMA_CHARACTER = 2;
+const LONGEST_SIGMA_PROPERTY_IN_BYTES = 64;
+const MOST_SECTIONS_A_REAL_SIGMA_RAW_HAS = 64;
+const MOST_PROPERTIES_A_REAL_SIGMA_RAW_HAS = 256;
 
 const ISO_BOX_HEADER_BYTES = 8;
 const ISO_BOX_HEADER_WITH_64_BIT_SIZE_BYTES = 16;
@@ -155,6 +193,15 @@ const readBytesAt = (fileDescriptor, position, byteCount) => {
 
 const readTextAt = (fileDescriptor, position, byteCount) =>
   readBytesAt(fileDescriptor, position, byteCount)?.toString('latin1') ?? null;
+
+const readAtMostBytesAt = (fileDescriptor, position, byteCount) => {
+  const buffer = Buffer.alloc(byteCount);
+  const bytesRead = fs.readSync(fileDescriptor, buffer, 0, byteCount, position);
+  return bytesRead === 0 ? null : buffer.subarray(0, bytesRead);
+};
+
+const readTwoByteWideTextAt = (fileDescriptor, position, byteCount) =>
+  readAtMostBytesAt(fileDescriptor, position, byteCount)?.toString('utf16le').split('\0')[0] ?? null;
 
 const readUInt16At = (fileDescriptor, position, isLittleEndian) => {
   const bytes = readBytesAt(fileDescriptor, position, 2);
@@ -607,6 +654,139 @@ function readCameraClockFromSecondsSince1904(secondsSince1904) {
   };
 }
 
+const readCameraClockFromSecondsSince1970 = (secondsSince1970) =>
+  readCameraClockFromSecondsSince1904(secondsSince1970 + SECONDS_BETWEEN_1904_AND_1970);
+
+const timestampIfTheClockIsPlausible = (clock) =>
+  (clock.year < EARLIEST_PLAUSIBLE_YEAR || clock.year > LATEST_PLAUSIBLE_YEAR ? null : formatTimestamp(clock));
+
+const fileStartsWithMinoltaRawMark = (fileDescriptor) =>
+  readTextAt(fileDescriptor, 0, MINOLTA_RAW_MARK.length) === MINOLTA_RAW_MARK;
+
+function readTimestampFromMinoltaRaw(fileDescriptor, fileSizeInBytes) {
+  let blockStart = BYTES_IN_A_MINOLTA_BLOCK_HEADER;
+  while (blockStart + BYTES_IN_A_MINOLTA_BLOCK_HEADER <= fileSizeInBytes) {
+    const blockType = readTextAt(fileDescriptor, blockStart, ISO_BOX_TYPE_FIELD_BYTES);
+    const blockLength = readUInt32At(fileDescriptor, blockStart + ISO_BOX_TYPE_FIELD_BYTES, false);
+    if (blockType === null || blockLength === null || blockLength <= 0) return null;
+
+    const contentStart = blockStart + BYTES_IN_A_MINOLTA_BLOCK_HEADER;
+    if (blockType === MINOLTA_BLOCK_HOLDING_A_TIFF) {
+      return readTimestampFromTiff(fileDescriptor, contentStart, { mayFallBackToEmbeddedJpeg: false });
+    }
+    blockStart = contentStart + blockLength;
+  }
+  return null;
+}
+
+const fileStartsWithCanonCiffMark = (fileDescriptor) =>
+  readTextAt(fileDescriptor, BYTES_FROM_FILE_START_TO_THE_CIFF_MARK, CANON_CIFF_MARK.length) === CANON_CIFF_MARK;
+
+function findCaptureTimeInCiffHeap(fileDescriptor, heapStart, heapEnd, isLittleEndian, howDeep) {
+  if (howDeep > DEEPEST_A_REAL_CIFF_DIRECTORY_NESTS) return null;
+  const directoryPointerAt = heapEnd - BYTES_IN_A_CIFF_DIRECTORY_POINTER;
+  if (directoryPointerAt < heapStart) return null;
+
+  const directoryOffset = readUInt32At(fileDescriptor, directoryPointerAt, isLittleEndian);
+  if (directoryOffset === null) return null;
+  const directoryStart = heapStart + directoryOffset;
+  if (directoryStart < heapStart || directoryStart + BYTES_IN_A_CIFF_ENTRY_COUNT_FIELD > heapEnd) return null;
+
+  const entryCount = readUInt16At(fileDescriptor, directoryStart, isLittleEndian);
+  if (entryCount === null || entryCount === 0 || entryCount > MOST_ENTRIES_A_REAL_CIFF_DIRECTORY_HAS) return null;
+
+  for (let entryIndex = 0; entryIndex < entryCount; entryIndex++) {
+    const entryStart = directoryStart + BYTES_IN_A_CIFF_ENTRY_COUNT_FIELD
+      + entryIndex * BYTES_PER_CIFF_DIRECTORY_ENTRY;
+    const tag = readUInt16At(fileDescriptor, entryStart, isLittleEndian);
+    const valueLength = readUInt32At(fileDescriptor, entryStart + 2, isLittleEndian);
+    const valueOffset = readUInt32At(fileDescriptor, entryStart + 6, isLittleEndian);
+    if (tag === null || valueLength === null || valueOffset === null) return null;
+
+    const valueStart = heapStart + valueOffset;
+    const valueEnd = valueStart + valueLength;
+    if (valueStart < heapStart || valueEnd > heapEnd) continue;
+
+    if ((tag & CIFF_DATA_TYPE_MASK) === CIFF_DATA_TYPE_SUBDIRECTORY) {
+      const found = findCaptureTimeInCiffHeap(fileDescriptor, valueStart, valueEnd, isLittleEndian, howDeep + 1);
+      if (found !== null) return found;
+    } else if (tag === CIFF_TAG_CAPTURE_TIME) {
+      const secondsSince1970 = readUInt32At(fileDescriptor, valueStart, isLittleEndian);
+      if (secondsSince1970 === null || secondsSince1970 === 0) continue;
+      const timestamp = timestampIfTheClockIsPlausible(readCameraClockFromSecondsSince1970(secondsSince1970));
+      if (timestamp !== null) return timestamp;
+    }
+  }
+  return null;
+}
+
+function readTimestampFromCanonCiffRaw(fileDescriptor, fileSizeInBytes) {
+  const byteOrderMark = readTextAt(fileDescriptor, 0, 2);
+  if (byteOrderMark !== TIFF_LITTLE_ENDIAN_MARK && byteOrderMark !== TIFF_BIG_ENDIAN_MARK) return null;
+  const isLittleEndian = byteOrderMark === TIFF_LITTLE_ENDIAN_MARK;
+
+  const heapStart = readUInt32At(fileDescriptor, BYTES_FROM_FILE_START_TO_THE_CIFF_HEAP, isLittleEndian);
+  if (heapStart === null || heapStart <= 0 || heapStart >= fileSizeInBytes) return null;
+  return findCaptureTimeInCiffHeap(fileDescriptor, heapStart, fileSizeInBytes, isLittleEndian, 0);
+}
+
+const fileStartsWithSigmaRawMark = (fileDescriptor) =>
+  readTextAt(fileDescriptor, 0, SIGMA_RAW_MARK.length) === SIGMA_RAW_MARK;
+
+function readCaptureTimeFromSigmaProperties(fileDescriptor, sectionStart) {
+  if (readTextAt(fileDescriptor, sectionStart, ISO_BOX_TYPE_FIELD_BYTES) !== SIGMA_PROPERTY_SECTION_MARK) return null;
+
+  const propertyCount = readUInt32At(fileDescriptor, sectionStart + BYTES_FROM_A_SECTION_START_TO_ITS_COUNT, true);
+  if (propertyCount === null || propertyCount === 0 || propertyCount > MOST_PROPERTIES_A_REAL_SIGMA_RAW_HAS) return null;
+
+  const tableStart = sectionStart + BYTES_IN_A_SIGMA_PROPERTY_SECTION_HEADER;
+  const textStart = tableStart + propertyCount * BYTES_PER_SIGMA_PROPERTY_ENTRY;
+
+  for (let propertyIndex = 0; propertyIndex < propertyCount; propertyIndex++) {
+    const entryStart = tableStart + propertyIndex * BYTES_PER_SIGMA_PROPERTY_ENTRY;
+    const nameOffset = readUInt32At(fileDescriptor, entryStart, true);
+    const valueOffset = readUInt32At(fileDescriptor, entryStart + 4, true);
+    if (nameOffset === null || valueOffset === null) return null;
+
+    const name = readTwoByteWideTextAt(
+      fileDescriptor, textStart + nameOffset * BYTES_PER_SIGMA_CHARACTER, LONGEST_SIGMA_PROPERTY_IN_BYTES,
+    );
+    if (name !== SIGMA_CAPTURE_TIME_PROPERTY) continue;
+
+    const value = readTwoByteWideTextAt(
+      fileDescriptor, textStart + valueOffset * BYTES_PER_SIGMA_CHARACTER, LONGEST_SIGMA_PROPERTY_IN_BYTES,
+    );
+    const secondsSince1970 = Number(value);
+    if (!Number.isFinite(secondsSince1970) || secondsSince1970 <= 0) return null;
+    return timestampIfTheClockIsPlausible(readCameraClockFromSecondsSince1970(secondsSince1970));
+  }
+  return null;
+}
+
+function readTimestampFromSigmaRaw(fileDescriptor, fileSizeInBytes) {
+  const directoryStart = readUInt32At(fileDescriptor, fileSizeInBytes - BYTES_IN_A_SIGMA_DIRECTORY_POINTER, true);
+  if (directoryStart === null || directoryStart <= 0 || directoryStart >= fileSizeInBytes) return null;
+  if (readTextAt(fileDescriptor, directoryStart, ISO_BOX_TYPE_FIELD_BYTES) !== SIGMA_DIRECTORY_MARK) return null;
+
+  const sectionCount = readUInt32At(fileDescriptor, directoryStart + BYTES_FROM_A_SECTION_START_TO_ITS_COUNT, true);
+  if (sectionCount === null || sectionCount === 0 || sectionCount > MOST_SECTIONS_A_REAL_SIGMA_RAW_HAS) return null;
+
+  for (let sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
+    const entryStart = directoryStart + BYTES_IN_A_SIGMA_DIRECTORY_HEADER
+      + sectionIndex * BYTES_PER_SIGMA_DIRECTORY_ENTRY;
+    const sectionStart = readUInt32At(fileDescriptor, entryStart, true);
+    const sectionType = readTextAt(
+      fileDescriptor, entryStart + BYTES_FROM_SIGMA_DIRECTORY_ENTRY_START_TO_ITS_TYPE, ISO_BOX_TYPE_FIELD_BYTES,
+    );
+    if (sectionStart === null || sectionType === null) return null;
+    if (sectionType !== SIGMA_PROPERTY_SECTION_TYPE || sectionStart >= fileSizeInBytes) continue;
+
+    const captured = readCaptureTimeFromSigmaProperties(fileDescriptor, sectionStart);
+    if (captured !== null) return captured;
+  }
+  return null;
+}
+
 function readTimestampFromMovie(fileDescriptor, fileSizeInBytes) {
   const movieBox = findIsoBox(fileDescriptor, 0, fileSizeInBytes, MOVIE_BOX_TYPE);
   if (movieBox === null) return null;
@@ -625,9 +805,7 @@ function readTimestampFromMovie(fileDescriptor, fileSizeInBytes) {
     : readUInt32At(fileDescriptor, creationTimeStart, false);
   if (secondsSince1904 === null || secondsSince1904 === 0) return null;
 
-  const clock = readCameraClockFromSecondsSince1904(secondsSince1904);
-  if (clock.year < EARLIEST_PLAUSIBLE_YEAR || clock.year > LATEST_PLAUSIBLE_YEAR) return null;
-  return formatTimestamp(clock);
+  return timestampIfTheClockIsPlausible(readCameraClockFromSecondsSince1904(secondsSince1904));
 }
 
 const fileStartsWithJpegSignature = (fileDescriptor) =>
@@ -647,12 +825,24 @@ export function readTimestampFromFile(filePath, fileSizeInBytes) {
       const timestamp = readTimestampFromJpeg(fileDescriptor);
       return timestamp === null ? null : { timestamp, source: DATE_SOURCE.exifMetadata };
     }
+    if (fileStartsWithCanonCiffMark(fileDescriptor)) {
+      const timestamp = readTimestampFromCanonCiffRaw(fileDescriptor, fileSizeInBytes);
+      return timestamp === null ? null : { timestamp, source: DATE_SOURCE.exifMetadata };
+    }
     if (fileStartsWithTiffByteOrderMark(fileDescriptor)) {
       const timestamp = readTimestampFromTiff(fileDescriptor, 0, { mayFallBackToEmbeddedJpeg: true });
       return timestamp === null ? null : { timestamp, source: DATE_SOURCE.exifMetadata };
     }
     if (fileStartsWithFujifilmRawMark(fileDescriptor)) {
       const timestamp = readTimestampFromFujifilmRaw(fileDescriptor);
+      return timestamp === null ? null : { timestamp, source: DATE_SOURCE.exifMetadata };
+    }
+    if (fileStartsWithMinoltaRawMark(fileDescriptor)) {
+      const timestamp = readTimestampFromMinoltaRaw(fileDescriptor, fileSizeInBytes);
+      return timestamp === null ? null : { timestamp, source: DATE_SOURCE.exifMetadata };
+    }
+    if (fileStartsWithSigmaRawMark(fileDescriptor)) {
+      const timestamp = readTimestampFromSigmaRaw(fileDescriptor, fileSizeInBytes);
       return timestamp === null ? null : { timestamp, source: DATE_SOURCE.exifMetadata };
     }
     const stillTimestamp = readTimestampFromIsoBaseMediaStill(fileDescriptor, fileSizeInBytes);
