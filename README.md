@@ -1,5 +1,6 @@
 # shotsort
 
+[![npm](https://img.shields.io/npm/v/shotsort)](https://www.npmjs.com/package/shotsort)
 [![tests](https://github.com/mativp/shotsort/actions/workflows/test.yml/badge.svg)](https://github.com/mativp/shotsort/actions/workflows/test.yml)
 [![lines](https://img.shields.io/badge/lines-%E2%89%A599%25-brightgreen)](#test)
 [![branches](https://img.shields.io/badge/branches-%E2%89%A580%25-brightgreen)](#test)
