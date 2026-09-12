@@ -1,13 +1,13 @@
-.TH LUMIX\-SORT 1 "2026-09-08" "lumix-sort 1.0.0" "User Commands"
+.TH SHOTSORT 1 "2026-09-12" "shotsort 1.0.0" "User Commands"
 .SH NAME
-lumix\-sort \- sort photos and video
+shotsort \- sort photos and video
 by the day they were shot
 .SH SYNOPSIS
-.B lumix\-sort
+.B shotsort
 .RI [ OPTION ]...
 .IR FOLDER ...
 .SH DESCRIPTION
-.B lumix\-sort
+.B shotsort
 groups photos and video by the day they were taken, using the date the camera
 recorded inside each file rather than anything the filesystem claims. It is
 meant for the folder you get after copying a card: point it at that folder and
@@ -27,7 +27,7 @@ prints that plan.
 A
 .I FOLDER
 must always be named:
-.B lumix\-sort
+.B shotsort
 run with no arguments prints its options and sorts nothing, and it never falls
 back to the folder you are working in. Day folders are created at the top level
 of the folder you name, or of
@@ -120,7 +120,7 @@ folder chosen for it, the clock the date came from, and what was done.
 .TP
 .BR \-h ", " \-\-help
 Print the usage text and exit, exactly as running
-.B lumix\-sort
+.B shotsort
 with no arguments does.
 .TP
 .BR \-V ", " \-\-version
@@ -143,7 +143,7 @@ Some files were not placed, or none were found.
 .TP
 .B 2
 The command line was wrong, naming no folder to sort included. Running
-.B lumix\-sort
+.B shotsort
 with no arguments at all therefore prints the usage text and exits
 .BR 2 .
 .SH FILE TYPES
@@ -315,13 +315,13 @@ alone. Only folders that are already empty are removed, and never one named
 on the command line.
 .SH EXAMPLES
 .TP
-.B lumix\-sort
+.B shotsort
 Print the options and sort nothing.
 .TP
-.B lumix\-sort \-n \-s ~/Import \-d ~/Pictures/2026
+.B shotsort \-n \-s ~/Import \-d ~/Pictures/2026
 Print what that would do, and do none of it.
 .TP
-.B lumix\-sort \-s ~/Import \-d ~/Pictures/2026
+.B shotsort \-s ~/Import \-d ~/Pictures/2026
 Read
 .I ~/Import
 and build the sorted day folders under
@@ -330,24 +330,24 @@ leaving
 .I ~/Import
 exactly as it came off the card. This is the usual way to run it.
 .TP
-.B lumix\-sort ~/Import
+.B shotsort ~/Import
 Sort it in place. The day folders hold copies and the originals stay in
 .IR DCIM ,
 so the folder briefly holds both.
 .TP
-.B lumix\-sort \-m ~/Import
+.B shotsort \-m ~/Import
 The same, moving the files rather than copying them, so nothing is duplicated
 and the emptied
 .I DCIM
 folders are removed afterwards.
 .TP
-.B lumix\-sort .
+.B shotsort .
 Sort the folder you are standing in.
 .TP
-.B lumix\-sort \-\-layout '%Y/%F' ~/Import
+.B shotsort \-\-layout '%Y/%F' ~/Import
 Put a year level above the days.
 .TP
-.B lumix\-sort \-\-day\-start 4 ~/Import
+.B shotsort \-\-day\-start 4 ~/Import
 Keep a shoot that ran past midnight in the day it began.
 .SH ENVIRONMENT
 .TP

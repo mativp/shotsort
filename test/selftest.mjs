@@ -19,8 +19,8 @@ import { PLACEMENT, FILESYSTEM_DATE_USE, UNDATED_FOLDER_NAME } from '../src/sort
 import { DATE_SOURCE } from '../src/date.mjs';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
-const COMMAND = path.join(testDirectory, '..', 'bin', 'lumix-sort.mjs');
-const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'lumix-sort-'));
+const COMMAND = path.join(testDirectory, '..', 'bin', 'shotsort.mjs');
+const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'shotsort-'));
 
 const EXIT_EVERYTHING_PLACED = 0;
 const EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND = 1;
@@ -773,7 +773,7 @@ function theCountsInTheNotes() {
   const dump = freshCardDump('counts');
   const run = runCommand(['-n', dump]);
   expect('the tilde note counts the files dated from the filesystem, and there are two',
-    /lumix-sort: ~ marks days holding 2 file\(s\)/.test(run.standardError), run.standardError);
+    /shotsort: ~ marks days holding 2 file\(s\)/.test(run.standardError), run.standardError);
 
   const clashing = fs.mkdtempSync(path.join(temporaryDirectory, 'clash-count-'));
   const shot = '2026:04:08 14:00:00';
@@ -783,7 +783,7 @@ function theCountsInTheNotes() {
   }
   const clashRun = runCommand(['-n', clashing]);
   expect('the subfolder note counts the names that clashed, and there are two',
-    /lumix-sort: 2 file names are used by more than one photo/.test(clashRun.standardError), clashRun.standardError);
+    /shotsort: 2 file names are used by more than one photo/.test(clashRun.standardError), clashRun.standardError);
 }
 
 function theCommandLineItself() {
@@ -847,7 +847,7 @@ function theCommandLineItself() {
   const askedForHelp = runCommand(['--help']);
 
   expect('running it with no arguments prints the usage on standard output',
-    bareInvocation.standardOutput.startsWith('Usage: lumix-sort') && bareInvocation.standardError === '',
+    bareInvocation.standardOutput.startsWith('Usage: shotsort') && bareInvocation.standardError === '',
     bareInvocation.standardOutput.slice(0, 120) + bareInvocation.standardError);
   expect('that usage lists the options and worked examples',
     (bareInvocation.standardOutput.match(/^ {2,6}-/gm) ?? []).length >= 9
@@ -874,7 +874,7 @@ function theCommandLineItself() {
 function everyEnumMemberTheCodeRefersToExists() {
   const enumsByName = { PLACEMENT, FILESYSTEM_DATE_USE, DATE_SOURCE };
   const projectRoot = path.join(testDirectory, '..');
-  const sourceFiles = ['bin/lumix-sort.mjs', 'src/sort.mjs', 'src/date.mjs'];
+  const sourceFiles = ['bin/shotsort.mjs', 'src/sort.mjs', 'src/date.mjs'];
   const referenceToAnEnumMember = /\b(PLACEMENT|FILESYSTEM_DATE_USE|DATE_SOURCE)\.([A-Za-z][A-Za-z0-9]*)/g;
   const referencesThatResolveToNothing = [];
 
@@ -897,7 +897,7 @@ function theDocumentationSaysTheSameAsTheProgram() {
   const everyOption = [...new Set([...longOptions, ...shortOptions])];
 
   const projectRoot = path.join(testDirectory, '..');
-  const manualPageAsPlainText = fs.readFileSync(path.join(projectRoot, 'man', 'lumix-sort.1'), 'utf8')
+  const manualPageAsPlainText = fs.readFileSync(path.join(projectRoot, 'man', 'shotsort.1'), 'utf8')
     .replace(/\\f[IBRP]/g, '')
     .replace(/\\\(lq|\\\(rq/g, '"')
     .replace(/\\-/g, '-')

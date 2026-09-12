@@ -1,10 +1,10 @@
-# lumix-sort
+# shotsort
 
 Sort a folder of camera files into one folder per shooting day, using the date
 the camera wrote inside each file. No dependencies, no exiftool.
 
 ```
-$ lumix-sort ~/Import
+$ shotsort ~/Import
 2026-08-27 ~     7 files      1.4 GB
 2026-08-28       2 files      8.4 GB
 2026-08-29 ~     2 files      6.2 GB
@@ -14,30 +14,30 @@ $ lumix-sort ~/Import
 ## Install
 
 ```sh
-npm install -g lumix-sort
+npm install -g shotsort
 ```
 
 Or run it without installing anything:
 
 ```sh
-npx lumix-sort ~/Import
+npx shotsort ~/Import
 ```
 
-Node 18 or newer. Then `lumix-sort --help`, or `man lumix-sort` for the full
+Node 18 or newer. Then `shotsort --help`, or `man shotsort` for the full
 manual.
 
 From a clone instead:
 
 ```sh
-git clone https://github.com/mativp/lumix-sort.git
-cd lumix-sort
+git clone https://github.com/mativp/shotsort.git
+cd shotsort
 npm install -g .
 ```
 
 If your npm does not install man pages, copy it yourself:
 
 ```sh
-cp man/lumix-sort.1 /usr/local/share/man/man1/
+cp man/shotsort.1 /usr/local/share/man/man1/
 ```
 
 ## Use
@@ -45,9 +45,9 @@ cp man/lumix-sort.1 /usr/local/share/man/man1/
 Copy everything off the card however you like, then point it at the folder:
 
 ```sh
-lumix-sort                                  # print the options, sort nothing
-lumix-sort -n -s ~/Import -d ~/Photos       # see the plan, change nothing
-lumix-sort -s ~/Import -d ~/Photos          # sort it
+shotsort                                # print the options, sort nothing
+shotsort -n -s ~/Import -d ~/Photos     # see the plan, change nothing
+shotsort -s ~/Import -d ~/Photos        # sort it
 ```
 
 Files are **copied, never moved**, unless you ask for `--move`. A mistaken run
@@ -62,13 +62,13 @@ Sorting a folder in place works too, and then the day folders sit alongside the
 `DCIM` you copied:
 
 ```sh
-lumix-sort ~/Import        # ~/Import holds both DCIM and the sorted copies
-lumix-sort -m ~/Import     # the files move instead, and DCIM is removed after
+shotsort ~/Import      # ~/Import holds both DCIM and the sorted copies
+shotsort -m ~/Import   # the files move instead, and DCIM is removed after
 ```
 
-You always have to name the folder. Run with no arguments `lumix-sort` prints
+You always have to name the folder. Run with no arguments `shotsort` prints
 its options and sorts nothing, and it never falls back to the folder you
-happen to be standing in — sort the current one with `lumix-sort .` if that is
+happen to be standing in — sort the current one with `shotsort .` if that is
 what you mean.
 
 ## Options
@@ -90,7 +90,7 @@ A wedding shot from 20:00 on the 27th until 01:30 on the 28th is one evening's
 work, but with the day turning at midnight it lands in two folders:
 
 ```
-lumix-sort ~/Import              lumix-sort --day-start 4 ~/Import
+shotsort ~/Import                shotsort --day-start 4 ~/Import
   2026-08-27/  ← 20:00-23:59       2026-08-27/  ← the whole night
   2026-08-28/  ← 00:00-01:30
 ```
@@ -101,7 +101,7 @@ filed under the previous day. Any hour from 0 to 12.
 #### Building a library
 
 ```sh
-lumix-sort -s ~/Import -d ~/Pictures/2026
+shotsort -s ~/Import -d ~/Pictures/2026
 ```
 
 Reads `~/Import`, writes the day folders into `~/Pictures/2026`, and leaves
@@ -114,7 +114,7 @@ Stills and video are both filed by the clock the camera was set to, so nothing
 here applies to them. AVCHD clips (`.MTS`, `.M2TS`) and HLG photos (`.HSP`) are
 the exception: no date this reads is stored inside them, leaving only the date
 the filesystem keeps. Read [What it reads](#what-it-reads) for why that date is
-sometimes worthless and how `lumix-sort` tells the difference.
+sometimes worthless and how `shotsort` tells the difference.
 
 | | |
 |---|---|
@@ -133,7 +133,7 @@ sometimes worthless and how `lumix-sort` tells the difference.
 
 | | |
 |---|---|
-| `-h`, `--help` | Print the usage text and exit, exactly as running `lumix-sort` with no arguments does. |
+| `-h`, `--help` | Print the usage text and exit, exactly as running `shotsort` with no arguments does. |
 | `-V`, `--version` | Print the version and exit. |
 
 Short options may be run together: `-nv` is `-n -v`. A `--` argument ends
@@ -145,7 +145,7 @@ option parsing.
 |---|---|
 | `0` | Every file was placed. |
 | `1` | Some files were not placed, or none were found. |
-| `2` | The command line was wrong, naming no folder to sort included. Running `lumix-sort` with no arguments at all therefore prints the usage text and exits `2`. |
+| `2` | The command line was wrong, naming no folder to sort included. Running `shotsort` with no arguments at all therefore prints the usage text and exits `2`. |
 
 ## How files are grouped
 
@@ -229,7 +229,7 @@ The date comes from the first of these that answers:
 
 Step 5 is only worth anything if whatever copied the card kept those dates.
 `cp` without `-p` does not: it stamps every file with the moment of the copy.
-`lumix-sort` notices — a filesystem date well after the newest date any file
+`shotsort` notices — a filesystem date well after the newest date any file
 actually records is the moment of a copy, not a shooting time — and puts those
 files in `undated/` rather than a wrong day. Copy with `ditto`, `cp -p` or
 `rsync -a` and they sort correctly.

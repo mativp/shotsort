@@ -13,7 +13,7 @@ import {
 } from '../src/sort.mjs';
 import { DATE_SOURCE } from '../src/date.mjs';
 
-const PROGRAM_NAME = 'lumix-sort';
+const PROGRAM_NAME = 'shotsort';
 
 const EXIT_CODE = {
   everythingPlaced: 0,
