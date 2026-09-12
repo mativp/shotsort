@@ -1,0 +1,129 @@
+name: release
+
+# Publishing is driven by GitHub releases, not by pushing a tag. Creating the release is
+# the deliberate act: the tag alone changes nothing until the release is published, so a
+# tag pushed by accident, or pushed early, does not put a version on npm.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    # Three places state the version of a release, and all three have to say the same
+    # thing before anything is published: the tag, package.json (which is what npm
+    # actually publishes, and what `shotsort --version` prints at runtime), and the
+    # pre-release checkbox on the release itself.
+    runs-on: ubuntu-latest
+    outputs:
+      dist-tag: ${{ steps.read.outputs.dist-tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The ancestry check below needs the history, not just the tagged commit.
+          fetch-depth: 0
+
+      - name: The tag, the manifest and the pre-release box have to agree
+        id: read
+        env:
+          # Through the environment rather than inlined into the script: the tag name is
+          # free text typed by whoever cut the release.
+          TAG: ${{ github.event.release.tag_name }}
+          MARKED_AS_PRERELEASE: ${{ github.event.release.prerelease }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          version_in_manifest=$(node -p "require('./package.json').version")
+          version_in_tag=${TAG#v}
+
+          if [ "$version_in_tag" != "$version_in_manifest" ]; then
+            echo "::error::the tag says $version_in_tag, package.json says $version_in_manifest -- bump the manifest with 'npm version' so the two are cut together"
+            exit 1
+          fi
+
+          # npm would happily take 'v1.0.0-alpha' or '1.0' and publish something nobody
+          # can range-match against, so the version is held to plain semver here.
+          node -e "
+            const version = require('./package.json').version;
+            if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.test(version)) {
+              console.error('::error::' + version + ' is not a semver version');
+              process.exit(1);
+            }
+          "
+
+          # A version with a pre-release part goes out under that part's own dist-tag, so
+          # 1.0.0-alpha is installed by 'npm install shotsort@alpha' and plain
+          # 'npm install shotsort' keeps getting the newest stable release. Publishing an
+          # alpha as 'latest' is the one npm mistake that cannot be undone quietly.
+          dist_tag=$(node -e "
+            const version = require('./package.json').version;
+            const prerelease = version.split('+')[0].split('-')[1];
+            if (!prerelease) { console.log('latest'); process.exit(0); }
+            const identifier = prerelease.split('.')[0];
+            // npm refuses any dist-tag that could be read as a semver range, and an
+            // unnamed pre-release is exactly that: 'npm version prerelease' with no
+            // --preid gives 1.0.1-0, whose identifier is 0. Caught here rather than at
+            // the publish step, which is on the far side of the matrix and the approval.
+            if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(identifier)) {
+              console.error('::error::the pre-release part of ' + version + ' is ' + identifier + ', which npm will not accept as a dist-tag -- name it: npm version prerelease --preid alpha');
+              process.exit(1);
+            }
+            console.log(identifier);
+          ")
+
+          is_prerelease=false
+          if [ "$dist_tag" != latest ]; then is_prerelease=true; fi
+          if [ "$is_prerelease" != "$MARKED_AS_PRERELEASE" ]; then
+            echo "::error::version $version_in_manifest is $( [ "$is_prerelease" = true ] && echo 'a pre-release' || echo 'stable' ), but the GitHub release is marked prerelease=$MARKED_AS_PRERELEASE"
+            exit 1
+          fi
+
+          # A release can be cut from any commit in the repository, including one on a
+          # branch that was never reviewed or merged. Only what is on the default branch
+          # is publishable.
+          git fetch --quiet origin "$DEFAULT_BRANCH"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::the tagged commit is not on $DEFAULT_BRANCH; releases are cut from the default branch"
+            exit 1
+          fi
+
+          echo "dist-tag=$dist_tag" >> "$GITHUB_OUTPUT"
+          echo "publishing $version_in_manifest to npm under the '$dist_tag' tag"
+
+  verify:
+    # The same matrix pull requests get: every supported Node, and the two other platforms
+    # cameras are unloaded on. Nothing is published on a red run.
+    needs: version
+    uses: ./.github/workflows/test.yml
+
+  publish:
+    needs: [version, verify]
+    runs-on: ubuntu-latest
+    # The last gate, and the only one a person operates. Everything up to here is a check
+    # a machine can make; this one waits for someone to look at the guard's output and the
+    # green matrix and press approve. It is also where the npm token lives, so a workflow
+    # change that tried to publish from some other job could not reach the credential.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/shotsort
+    permissions:
+      contents: read
+      # Lets npm mint a provenance attestation tying the tarball on the registry back to
+      # this workflow run and this commit. Public repository, so the attestation is public
+      # too, and the package page shows where it was built.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      # prepublishOnly runs the lint and the test suite once more here, immediately before
+      # the tarball is uploaded, so this step is the last gate as well as the publish.
+      - run: npm publish --provenance --tag "${{ needs.version.outputs.dist-tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

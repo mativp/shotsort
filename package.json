@@ -16,6 +16,9 @@
   "engines": {
     "node": ">=18"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "node test/unittest.mjs && node test/selftest.mjs && node test/oracle.mjs",
     "test:unit": "node test/unittest.mjs",
