@@ -112,8 +112,8 @@ function parseEveryArgument(commandLineArguments, options) {
 // what does naming a folder look like? The folder you are already standing in still has
 // to be spelled out, and '.' is not obvious to everyone, which is why it leads.
 const NAME_THE_FOLDER_TO_SORT = `name the folder to sort, for example:
-  ${PROGRAM_NAME} .             the folder you are standing in
-  ${PROGRAM_NAME} ~/Import      a folder named in full`;
+  ${PROGRAM_NAME} .            the folder you are standing in
+  ${PROGRAM_NAME} ~/Import     a folder named in full`;
 
 function theProblemWith(options) {
   const dayStartIsAnHour = Number.isInteger(options.hourTheDayStartsAt)

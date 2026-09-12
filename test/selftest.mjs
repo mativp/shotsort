@@ -24,6 +24,7 @@ import { applyPlan } from '../src/apply.mjs';
 import { destinationProbeOverTheFilesystem } from '../src/destination.mjs';
 import { FILESYSTEM_DATE_USE } from '../src/dating.mjs';
 import { DATE_SOURCE } from '../src/dateSource.mjs';
+import { USAGE_IN_BRIEF, USAGE_IN_FULL } from '../cli/usage.mjs';
 
 // The parsers answer with a camera clock record now; these checks still read as the
 // stamp a camera would have written, so they go on comparing the text of one.
@@ -898,6 +899,18 @@ function theCommandLineItself() {
   expect('-h prints the same usage as --help',
     runCommand(['-h']).standardOutput === runCommand(['--help']).standardOutput
     && runCommand(['-h']).exitCode === EXIT_EVERYTHING_PLACED);
+
+  // Printed and then exited on the spot, the tail of a text this long never leaves the
+  // buffer standard output holds while it is a pipe: the first 8192 bytes arrive and the
+  // rest is dropped, so anything reading the output rather than showing it -- this suite
+  // included -- was reading a text cut off mid-word. Both are checked whole, against the
+  // strings themselves, since a check reading the same truncated output cannot see it.
+  for (const [flags, whole] of [[[], USAGE_IN_BRIEF], [['--help'], USAGE_IN_FULL]]) {
+    const printed = runCommand(flags).standardOutput;
+    expect(`${flags.length === 0 ? 'the brief' : 'the full text'} arrives whole, not cut off where the buffer ends`,
+      printed === `${whole}\n`,
+      `${printed.length} of ${whole.length + 1} bytes, ending ${JSON.stringify(printed.slice(-40))}`);
+  }
 
   const afterTheTerminator = freshCardDump('after-terminator');
   const terminated = runCommand(['-n', '--', afterTheTerminator]);

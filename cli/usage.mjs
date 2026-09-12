@@ -23,9 +23,9 @@ ask for --move.
 
 In the folder you are standing in:
 
-  ${PROGRAM_NAME} -n .          see the plan, change nothing
-  ${PROGRAM_NAME} .             copy every file into its day folder
-  ${PROGRAM_NAME} -m .          move it there instead
+  ${PROGRAM_NAME} -n .         see the plan, change nothing
+  ${PROGRAM_NAME} .            copy every file into its day folder
+  ${PROGRAM_NAME} -m .         move it there instead
 
 From one folder into another:
 

@@ -81,34 +81,44 @@ function sort(options) {
   return outcome.failed > 0 ? EXIT_CODE.somethingFailedOrNothingFound : EXIT_CODE.everythingPlaced;
 }
 
+// Every way out of here sets the exit code and returns rather than calling process.exit,
+// which would cut off whatever console.log has not yet handed to the operating system.
+// Standard output is a stream whenever it is not a terminal, and the usage text is longer
+// than the buffer that stream holds, so exiting on the spot loses the end of it to
+// anything that captures the output rather than showing it.
 function main() {
   process.stdout.on('error', (streamError) => {
+    // Nobody is reading any more, so there is nothing left to flush and nothing to wait
+    // for: this is the one place stopping on the spot is the right thing to do.
     if (streamError.code === BROKEN_PIPE_ERROR_CODE) process.exit(EXIT_CODE.everythingPlaced);
   });
 
-  const commandLineArguments = process.argv.slice(2);
-  const decision = decideWhatToDo(commandLineArguments);
+  const decision = decideWhatToDo(process.argv.slice(2));
 
   // Shown the usage because nothing was asked of it, the command line was wrong; asked
   // for the usage, it is a success. Which of the two texts to print follows from that.
   if (decision.whatToDo === WHAT_TO_DO.printTheUsageInBrief) {
     out(USAGE_IN_BRIEF);
-    process.exit(EXIT_CODE.badCommandLine);
+    process.exitCode = EXIT_CODE.badCommandLine;
+    return;
   }
   if (decision.whatToDo === WHAT_TO_DO.printTheUsageInFull) {
     out(USAGE_IN_FULL);
-    process.exit(EXIT_CODE.everythingPlaced);
+    process.exitCode = EXIT_CODE.everythingPlaced;
+    return;
   }
   if (decision.whatToDo === WHAT_TO_DO.printVersion) {
     out(readVersionFromPackageManifest());
-    process.exit(EXIT_CODE.everythingPlaced);
+    process.exitCode = EXIT_CODE.everythingPlaced;
+    return;
   }
   if (decision.whatToDo === WHAT_TO_DO.refuse) {
     error(`${PROGRAM_NAME}: ${decision.problem}\nTry '${PROGRAM_NAME} --help'.`);
-    process.exit(EXIT_CODE.badCommandLine);
+    process.exitCode = EXIT_CODE.badCommandLine;
+    return;
   }
 
-  process.exit(sort(decision.options));
+  process.exitCode = sort(decision.options);
 }
 
 main();
