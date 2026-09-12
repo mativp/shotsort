@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/mativp/shotsort/actions/workflows/test.yml/badge.svg)](https://github.com/mativp/shotsort/actions/workflows/test.yml)
 [![lines](https://img.shields.io/badge/lines-%E2%89%A599%25-brightgreen)](#test)
-[![branches](https://img.shields.io/badge/branches-%E2%89%A598%25-brightgreen)](#test)
+[![branches](https://img.shields.io/badge/branches-%E2%89%A580%25-brightgreen)](#test)
 [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#test)
 
 Sort a folder of camera files into one folder per shooting day, using the date
@@ -346,9 +346,12 @@ purpose, each with the reason.
 
 ### What the numbers mean
 
-The line and branch figures on the badges are a floor, enforced by `npm run
-coverage:check` on every pull request. They are not a target reached by counting
-lines: most of the branches in a format reader are the ones that fire on a file
+The figures on the badges are a floor, enforced by `npm run coverage:check` on
+every pull request. The suite reaches well past both — 99.8% of lines and 98.6%
+of branches as it stands — and the branch floor is set far below that on
+purpose, so that a branch counted differently by a different Node version turns
+CI red only when cover is genuinely lost. They are not a target reached by
+counting lines: most of the branches in a format reader are the ones that fire on a file
 that went wrong, so the suite cuts every fixture short a byte at a time and reads
 what is left, then puts each of those bytes back as `0x00` and as `0xff` and
 reads it again. A file that stops half way has to read as nothing, or as the

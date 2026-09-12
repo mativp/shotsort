@@ -11,6 +11,7 @@ import {
   redcodeClipBuriedUnderMoreRecordsThanAreWalked, windowsMediaMovie,
   windowsMediaMovieBuriedUnderMoreObjectsThanAreWalked,
 } from './fixtures.mjs';
+import path from 'node:path';
 import { byteSourceForBuffer } from '../src/bytes.mjs';
 import { FORMATS_IN_THE_ORDER_THEY_ARE_TRIED, readCameraClockFromByteSource } from '../src/formats/registry.mjs';
 import {
@@ -42,14 +43,22 @@ const clockInside = (buffer) => readCameraClockFromByteSource(byteSourceForBuffe
 
 // A probe that answers from a list of paths rather than from a disk. `sameBytes` names the
 // groups of paths that hold one photo; anything not named holds bytes of its own.
+// Every path the planner hands back has been through path.resolve, which on Windows means
+// a drive letter and backslashes. These tests spell a card the Unix way because it reads
+// better, so both what goes in and what is expected back is put through the same resolve.
+// On Unix it changes nothing; on Windows it is the difference between comparing two paths
+// and comparing two notations.
+const asThisPlatformSpellsIt = (unixPath) => path.resolve(unixPath);
+
 const probeOver = (pathsThatExist, sameBytes = []) => ({
-  exists: (candidatePath) => pathsThatExist.includes(candidatePath),
+  exists: (candidatePath) => pathsThatExist.map(asThisPlatformSpellsIt).includes(candidatePath),
   contentsMatch: (firstPath, secondPath) =>
-    sameBytes.some((group) => group.includes(firstPath) && group.includes(secondPath)),
+    sameBytes.some((group) => group.map(asThisPlatformSpellsIt).includes(firstPath)
+      && group.map(asThisPlatformSpellsIt).includes(secondPath)),
 });
 
 const candidate = (filePath, { clock = null, dateSource = null, sizeInBytes = 1000, fileTimestamp = new Date(2026, 7, 27, 12) } = {}) =>
-  ({ path: filePath, sortRoot: '/card', sizeInBytes, fileTimestamp, clock, dateSource });
+  ({ path: asThisPlatformSpellsIt(filePath), sortRoot: asThisPlatformSpellsIt('/card'), sizeInBytes, fileTimestamp, clock, dateSource });
 
 const exif = (text) => cameraClockFromExifText(text);
 
@@ -262,10 +271,10 @@ function aPlanIsSettledWithNoDiskInvolved() {
   expect('and every one of them is planned to be placed',
     plan.placements.every((entry) => entry.placement === PLACEMENT.intoItsDayFolder));
   expect('the target path is the day folder under the card it came from',
-    plan.placements[0].targetPath === '/card/2026-08-27/P1.JPG');
+    plan.placements[0].targetPath === asThisPlatformSpellsIt('/card/2026-08-27/P1.JPG'));
   expect('a --dest sends the day folders elsewhere',
     buildPlan([candidate('/card/DCIM/P1.JPG', { clock: exif('2026:08:27 10:00:00') })],
-      { destination: '/library' }, probeOver([])).placements[0].targetPath === '/library/2026-08-27/P1.JPG');
+      { destination: '/library' }, probeOver([])).placements[0].targetPath === asThisPlatformSpellsIt('/library/2026-08-27/P1.JPG'));
 }
 
 function twoPhotosOfOneDaySharingAName() {
@@ -274,9 +283,9 @@ function twoPhotosOfOneDaySharingAName() {
   const plan = buildPlan([evening, morning], {}, probeOver([]));
 
   expect('the earlier photo takes the first numbered subfolder',
-    plan.placements[0].targetPath === '/card/2026-09-01/01/A9999.JPG', plan.placements[0].targetPath);
+    plan.placements[0].targetPath === asThisPlatformSpellsIt('/card/2026-09-01/01/A9999.JPG'), plan.placements[0].targetPath);
   expect('and the later one the second',
-    plan.placements[1].targetPath === '/card/2026-09-01/02/A9999.JPG', plan.placements[1].targetPath);
+    plan.placements[1].targetPath === asThisPlatformSpellsIt('/card/2026-09-01/02/A9999.JPG'), plan.placements[1].targetPath);
   expect('the plan says how many names had to be split',
     plan.namesSplitIntoSubfolders === 1);
 
@@ -448,7 +457,7 @@ function twoFilesAlikeInEveryWayButTheirPath() {
       === inTheOther.placements.map((entry) => entry.sourcePath).join(),
     inOneOrder.placements.map((entry) => entry.sourcePath).join());
   expect('and the one whose path sorts first takes the first numbered subfolder',
-    inOneOrder.placements[0].targetPath === '/card/2026-09-01/01/SAME.JPG', inOneOrder.placements[0].targetPath);
+    inOneOrder.placements[0].targetPath === asThisPlatformSpellsIt('/card/2026-09-01/01/SAME.JPG'), inOneOrder.placements[0].targetPath);
 }
 
 function aCardHoldingNothingThatRecordsItsOwnDate() {
