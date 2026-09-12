@@ -107,7 +107,12 @@ and
 turns the day at 04:00 instead, filing everything shot before 04:00 under the
 previous day, so that whole night lands in
 .I 2026\-08\-27
-together. An hour from 0 to 12.
+together. Any hour of the clock will do, 0 to 23, and the rule is the same all
+the way round: everything shot before the hour named belongs to the day before.
+A small hour suits a shoot that habitually runs past midnight;
+.B \-\-day\-start 18
+suits work that begins in the evening and is named for the night it belongs to
+rather than the date it ends on.
 .TP
 .B \-\-use\-filesystem\-date
 Date every file that records no date inside itself by the date the filesystem

@@ -142,7 +142,7 @@ export function cameraClockFromIso8601(text) {
 // day live together, so teaching it a new one is a single edit.
 export const DEFAULT_LAYOUT = '%Y-%m-%d';
 export const EARLIEST_HOUR_A_DAY_MAY_START_AT = 0;
-export const LATEST_HOUR_A_DAY_MAY_START_AT = 12;
+export const LATEST_HOUR_A_DAY_MAY_START_AT = 23;
 
 const ESCAPES_THAT_NAME_A_DAY = ['Y', 'm', 'd', 'F'];
 const LAYOUT_NAMES_A_DAY = new RegExp(`%[${ESCAPES_THAT_NAME_A_DAY.join('')}]`);

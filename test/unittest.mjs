@@ -590,8 +590,14 @@ function theCommandLineIsReadWithoutStartingAProcess() {
   expect('an option with no value left to take is refused',
     decideWhatToDo(['--dest']).problem === "option '--dest' needs a value");
   expect('--day-start outside the hours a day may start at is refused',
-    decideWhatToDo(['--day-start', '13', '/card']).problem
-      === '--day-start must be an hour from 0 to 12');
+    decideWhatToDo(['--day-start', '24', '/card']).problem
+      === '--day-start must be an hour from 0 to 23');
+  expect('but every hour of the clock is one a day may start at',
+    [0, 4, 12, 13, 23].every((hour) =>
+      decideWhatToDo(['--day-start', String(hour), '/card']).whatToDo === WHAT_TO_DO.sort));
+  expect('a day starting in the evening files the afternoon before it with the day before',
+    dayFolderFor(cameraClockFrom(2026, 8, 28, 19, 0, 0), { hourTheDayStartsAt: 20 }) === '2026-08-27'
+    && dayFolderFor(cameraClockFrom(2026, 8, 28, 20, 0, 0), { hourTheDayStartsAt: 20 }) === '2026-08-28');
   expect('--day-start that is not a whole number is refused',
     decideWhatToDo(['--day-start', 'noon', '/card']).problem !== undefined);
   expect('naming no folder to sort is refused',

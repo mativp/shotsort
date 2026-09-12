@@ -144,7 +144,7 @@ the whole manual, and `man shotsort` the same again in its proper place.
 | `-n`, `--dry-run` | Print the plan and change nothing. The plan shown is the one that would be carried out, computed by the same code. |
 | `-m`, `--move` | Move the files rather than copying them, leaving each source folder empty and then removing it. Without this the originals are left exactly where they are, so the source folder ends up holding both them and the sorted copies unless `--dest` sends the copies elsewhere. |
 | `--layout FORMAT` | How to name each day folder. `%Y` is the year, `%m` the month, `%d` the day, and `%F` all three joined by dashes. A slash makes a subfolder, so `--layout '%Y/%F'` gives `2026/2026-08-27`. Must be a relative path holding at least one date escape. Default `%Y-%m-%d`. |
-| `--day-start HOUR` | The hour at which one shooting day becomes the next. See below. An hour from 0 to 12, default `0`. |
+| `--day-start HOUR` | The hour at which one shooting day becomes the next. See below. Any hour of the clock, 0 to 23, default `0`. |
 
 #### `--day-start`
 
@@ -158,7 +158,13 @@ shotsort ~/Import                shotsort --day-start 4 ~/Import
 ```
 
 `--day-start 4` moves the boundary to 04:00, so anything shot before 04:00 is
-filed under the previous day. Any hour from 0 to 12.
+filed under the previous day.
+
+Any hour of the clock will do, 0 to 23, and the rule is the same all the way
+round: everything shot before the hour you name belongs to the day before. A
+small hour suits a shoot that habitually runs past midnight; an hour like
+`--day-start 18` suits work that begins in the evening and is named for the
+night it belongs to rather than the date it ends on.
 
 ### Files that record no date
 

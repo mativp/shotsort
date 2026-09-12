@@ -868,8 +868,8 @@ function theCommandLineItself() {
     /unrecognised option '-Z'/.test(refusedFor(['-Z'])), refusedFor(['-Z']));
   expect('an option missing its value says which option',
     /option '--dest' needs a value/.test(refusedFor(['--dest'])), refusedFor(['--dest']));
-  expect('a --day-start outside 0-12 says the range',
-    /--day-start must be an hour from 0 to 12/.test(refusedFor(['--day-start', '99', emptyFolder])),
+  expect('a --day-start outside the clock says the range',
+    /--day-start must be an hour from 0 to 23/.test(refusedFor(['--day-start', '99', emptyFolder])),
     refusedFor(['--day-start', '99', emptyFolder]));
   expect('an absolute --layout is refused as such',
     /--layout must be a relative folder name/.test(refusedFor(['--layout', '/etc/%F', emptyFolder])),
