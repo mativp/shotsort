@@ -20,7 +20,7 @@ jobs:
     outputs:
       dist-tag: ${{ steps.read.outputs.dist-tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The ancestry check below needs the history, not just the tagged commit.
           fetch-depth: 0
@@ -116,8 +116,8 @@ jobs:
       # too, and the package page shows where it was built.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
