@@ -619,6 +619,173 @@ function theQuietAndVerboseSwitches() {
     verboseRun.standardOutput.slice(0, 200));
 }
 
+function theFoldersLeftBehind() {
+  const copied = freshCardDump('tidy-copy');
+  const emptyOnTheCard = path.join(copied, 'DCIM', '103_PANA');
+  fs.mkdirSync(emptyOnTheCard, { recursive: true });
+  const copiedLibrary = path.join(temporaryDirectory, 'tidy-copy-library');
+  runCommand(['-s', copied, '-d', copiedLibrary]);
+  expect('copying leaves every source folder standing, the already-empty ones included',
+    fs.existsSync(emptyOnTheCard) && fs.existsSync(path.join(copied, 'DCIM', '100_PANA')),
+    JSON.stringify(filesUnder(copied)));
+
+  const moved = freshCardDump('tidy-move');
+  runCommand(['--move', moved]);
+  expect('moving removes the folders it emptied',
+    !fs.existsSync(path.join(moved, 'DCIM')));
+  expect('but never the folder you named, even once nothing of ours is left in it',
+    fs.existsSync(moved));
+
+  const emptiedEntirely = fs.mkdtempSync(path.join(temporaryDirectory, 'sole-'));
+  writeFixtureFile(path.join(emptiedEntirely, 'ONLY.JPG'), jpegFile('2026:04:02 08:00:00'));
+  const elsewhere = path.join(temporaryDirectory, 'sole-library');
+  runCommand(['--move', '-s', emptiedEntirely, '-d', elsewhere]);
+  expect('and a source folder the move empties completely is still left standing',
+    fs.existsSync(emptiedEntirely) && fs.existsSync(path.join(elsewhere, '2026-04-02', 'ONLY.JPG')),
+    `${fs.existsSync(emptiedEntirely)} / ${JSON.stringify(filesUnder(elsewhere))}`);
+}
+
+function foldersTheWalkMustNotEnter() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'skip-'));
+  const shot = '2026:04:03 09:00:00';
+  writeFixtureFile(path.join(dump, 'DCIM', 'KEEP.JPG'), jpegFile(shot));
+  for (const skipped of ['.Spotlight-V100', '.Trashes', 'System Volume Information', '$RECYCLE.BIN']) {
+    writeFixtureFile(path.join(dump, skipped, 'IGNORED.JPG'), jpegFile('1999:01:01 00:00:00'));
+  }
+  writeFixtureFile(path.join(dump, 'holiday.', 'TAKEN.JPG'), jpegFile(shot));
+
+  runCommand(['--move', dump]);
+  const sorted = filesUnder(dump).filter((f) => f.startsWith('2026-'));
+
+  expect('a system folder is skipped even when its name does not start with a dot',
+    !sorted.some((f) => f.endsWith('IGNORED.JPG')), JSON.stringify(sorted));
+  expect('every one of those folders keeps its own file where it was',
+    ['.Spotlight-V100', '.Trashes', 'System Volume Information', '$RECYCLE.BIN']
+      .every((skipped) => fs.existsSync(path.join(dump, skipped, 'IGNORED.JPG'))));
+  expect('a folder whose name merely ends with a dot is walked like any other',
+    sorted.includes('2026-04-03/TAKEN.JPG') && sorted.includes('2026-04-03/KEEP.JPG'),
+    JSON.stringify(sorted));
+}
+
+function tellingTwoPhotosApartByTheirBytes() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'same-size-'));
+  const shot = '2026:04:04 10:00:00';
+  const onePhoto = jpegFilePaddedTo(shot, 900);
+  const another = Buffer.from(onePhoto);
+  another[another.length - 1] = 0xAB;
+
+  writeFixtureFile(path.join(dump, 'DCIM', '100_PANA', 'SAME.JPG'), onePhoto);
+  writeFixtureFile(path.join(dump, 'DCIM', '101_PANA', 'SAME.JPG'), another);
+  runCommand(['--move', dump]);
+
+  expect('two photos of identical size but different bytes are kept apart, not collapsed',
+    JSON.stringify(visibleFilesUnder(dump))
+      === JSON.stringify(['2026-04-04/01/SAME.JPG', '2026-04-04/02/SAME.JPG']),
+    JSON.stringify(visibleFilesUnder(dump)));
+
+  const fresh = fs.mkdtempSync(path.join(temporaryDirectory, 'incoming-'));
+  const standingLibrary = path.join(temporaryDirectory, 'standing-library');
+  writeFixtureFile(path.join(standingLibrary, '2026-04-04', 'SAME.JPG'), jpegFilePaddedTo(shot, 1200));
+  writeFixtureFile(path.join(fresh, 'DCIM', 'SAME.JPG'), onePhoto);
+  runCommand(['--move', '-s', fresh, '-d', standingLibrary]);
+  expect('a file already in the library under that name, but a different size, is a clash not a duplicate',
+    JSON.stringify(filesUnder(standingLibrary))
+      === JSON.stringify(['2026-04-04/01/SAME.JPG', '2026-04-04/SAME.JPG']),
+    JSON.stringify(filesUnder(standingLibrary)));
+
+  const twins = fs.mkdtempSync(path.join(temporaryDirectory, 'twins-'));
+  writeFixtureFile(path.join(twins, 'DCIM', '100_PANA', 'SAME.JPG'), onePhoto);
+  writeFixtureFile(path.join(twins, 'DCIM', '101_PANA', 'SAME.JPG'), Buffer.from(onePhoto));
+  runCommand(['--move', twins]);
+  expect('while two copies of one photo collapse to a single file',
+    JSON.stringify(visibleFilesUnder(twins)) === JSON.stringify(['2026-04-04/SAME.JPG']),
+    JSON.stringify(visibleFilesUnder(twins)));
+}
+
+function matchingTheShotWhateverTheCase() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'case-'));
+  writeFixtureFile(path.join(dump, 'DCIM', '100_PANA', 'P1000009.JPG'), jpegFile('2026:04:05 11:00:00'));
+  writeFixtureFile(path.join(dump, 'DCIM', '100_PANA', 'p1000009.rw2'),
+    tiffFile({ signature: PANASONIC_RAW_SIGNATURE, dateTimeOriginal: null }));
+
+  runCommand(['--move', dump]);
+  expect('a raw matches its jpeg whatever case the card wrote the names in',
+    visibleFilesUnder(dump).includes('2026-04-05/p1000009.rw2'),
+    JSON.stringify(visibleFilesUnder(dump)));
+
+  const ambiguous = fs.mkdtempSync(path.join(temporaryDirectory, 'ambiguous-'));
+  for (const [folder, shot] of [['100_PANA', '2026:04:05 09:00:00'], ['101_PANA', '2026:04:09 15:00:00']]) {
+    writeFixtureFile(path.join(ambiguous, 'DCIM', folder, 'IMG_0001.JPG'), jpegFile(shot));
+    writeFixtureFile(path.join(ambiguous, 'DCIM', folder, 'img_0001.rw2'),
+      tiffFile({ signature: PANASONIC_RAW_SIGNATURE, dateTimeOriginal: null }));
+  }
+  runCommand(['--move', ambiguous]);
+  expect('and where one name is used on two days, each raw takes the date of its own folder',
+    JSON.stringify(visibleFilesUnder(ambiguous)) === JSON.stringify([
+      '2026-04-05/IMG_0001.JPG', '2026-04-05/img_0001.rw2',
+      '2026-04-09/IMG_0001.JPG', '2026-04-09/img_0001.rw2',
+    ]), JSON.stringify(visibleFilesUnder(ambiguous)));
+}
+
+function theEdgeOfTrustingTheFilesystem() {
+  const dayOfTheShoot = '2026:04:06 12:00:00';
+  const newestShot = new Date('2026-04-06T12:00:00').getTime();
+  const hours = (n) => new Date(newestShot + n * 60 * 60 * 1000);
+
+  const dumpFor = (name, stampedAt) => {
+    const dump = fs.mkdtempSync(path.join(temporaryDirectory, `${name}-`));
+    writeFixtureFile(path.join(dump, 'DCIM', 'DATED.JPG'), jpegFile(dayOfTheShoot));
+    writeFixtureFile(path.join(dump, 'DCIM', 'UNDATED.HSP'), Buffer.alloc(64, 3), stampedAt);
+    runCommand(['--move', dump]);
+    return visibleFilesUnder(dump);
+  };
+
+  expect('a filesystem date 36 hours after the newest shot is still trusted',
+    dumpFor('edge-in', hours(36)).some((f) => /^2026-04-0[78]\/UNDATED\.HSP$/.test(f)),
+    JSON.stringify(dumpFor('edge-in2', hours(36))));
+  expect('one minute past that it is treated as the moment of a copy',
+    dumpFor('edge-out', new Date(newestShot + 36 * 60 * 60 * 1000 + 60000))
+      .includes('undated/UNDATED.HSP'),
+    JSON.stringify(dumpFor('edge-out2', new Date(newestShot + 36 * 60 * 60 * 1000 + 60000))));
+}
+
+function recognisingAFolderItAlreadySortedInto() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'resort-'));
+  const shot = '2026:04:07 13:00:00';
+  writeFixtureFile(path.join(dump, 'DCIM', '100_PANA', 'CLASH.JPG'), jpegFilePaddedTo(shot, 800));
+  writeFixtureFile(path.join(dump, 'DCIM', '101_PANA', 'CLASH.JPG'), jpegFilePaddedTo(shot, 900));
+  runCommand(['--move', dump]);
+
+  const afterFirstRun = visibleFilesUnder(dump);
+  expect('a clash lands in two numbered subfolders',
+    JSON.stringify(afterFirstRun)
+      === JSON.stringify(['2026-04-07/01/CLASH.JPG', '2026-04-07/02/CLASH.JPG']),
+    JSON.stringify(afterFirstRun));
+
+  const secondRun = runCommand(['--move', dump]);
+  expect('and sorting again recognises those numbered subfolders rather than nesting deeper',
+    /2 already in place/.test(secondRun.standardOutput)
+    && JSON.stringify(visibleFilesUnder(dump)) === JSON.stringify(afterFirstRun),
+    secondRun.standardOutput + JSON.stringify(visibleFilesUnder(dump)));
+}
+
+function theCountsInTheNotes() {
+  const dump = freshCardDump('counts');
+  const run = runCommand(['-n', dump]);
+  expect('the tilde note counts the files dated from the filesystem, and there are two',
+    /lumix-sort: ~ marks days holding 2 file\(s\)/.test(run.standardError), run.standardError);
+
+  const clashing = fs.mkdtempSync(path.join(temporaryDirectory, 'clash-count-'));
+  const shot = '2026:04:08 14:00:00';
+  for (const [folder, size] of [['100_PANA', 800], ['101_PANA', 900], ['102_PANA', 1000]]) {
+    writeFixtureFile(path.join(clashing, 'DCIM', folder, 'DUP.JPG'), jpegFilePaddedTo(shot, size));
+    writeFixtureFile(path.join(clashing, 'DCIM', folder, 'OTHER.JPG'), jpegFilePaddedTo(shot, size + 1));
+  }
+  const clashRun = runCommand(['-n', clashing]);
+  expect('the subfolder note counts the names that clashed, and there are two',
+    /lumix-sort: 2 file names are used by more than one photo/.test(clashRun.standardError), clashRun.standardError);
+}
+
 function theCommandLineItself() {
   const emptyFolder = fs.mkdtempSync(path.join(temporaryDirectory, 'empty-'));
 
@@ -824,6 +991,13 @@ theOtherWaysToRunIt();
 theSummaryTheUserReads();
 theVerbsInTheClosingLine();
 theQuietAndVerboseSwitches();
+theFoldersLeftBehind();
+foldersTheWalkMustNotEnter();
+tellingTwoPhotosApartByTheirBytes();
+matchingTheShotWhateverTheCase();
+theEdgeOfTrustingTheFilesystem();
+recognisingAFolderItAlreadySortedInto();
+theCountsInTheNotes();
 theCommandLineItself();
 
 fs.rmSync(temporaryDirectory, { recursive: true, force: true });
