@@ -54,19 +54,17 @@ jobs:
             }
           "
 
-          # A version with a pre-release part goes out under that part's own dist-tag, so
-          # 1.0.0-alpha is installed by 'npm install shotsort@alpha' and plain
-          # 'npm install shotsort' keeps getting the newest stable release. Publishing an
+          # A pre-release goes out under its own identifier as the dist-tag, so that
+          # 'npm install shotsort' keeps getting the newest stable version. Publishing an
           # alpha as 'latest' is the one npm mistake that cannot be undone quietly.
           dist_tag=$(node -e "
             const version = require('./package.json').version;
             const prerelease = version.split('+')[0].split('-')[1];
             if (!prerelease) { console.log('latest'); process.exit(0); }
             const identifier = prerelease.split('.')[0];
-            // npm refuses any dist-tag that could be read as a semver range, and an
-            // unnamed pre-release is exactly that: 'npm version prerelease' with no
-            // --preid gives 1.0.1-0, whose identifier is 0. Caught here rather than at
-            // the publish step, which is on the far side of the matrix and the approval.
+            // 'npm version prerelease' with no --preid gives 1.0.1-0, and npm refuses
+            // 0 as a dist-tag because it reads as a semver range. Caught here rather
+            // than at the publish step, past the matrix and the approval.
             if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(identifier)) {
               console.error('::error::the pre-release part of ' + version + ' is ' + identifier + ', which npm will not accept as a dist-tag -- name it: npm version prerelease --preid alpha');
               process.exit(1);
@@ -94,8 +92,6 @@ jobs:
           echo "publishing $version_in_manifest to npm under the '$dist_tag' tag"
 
   verify:
-    # The same matrix pull requests get: every supported Node, and the two other platforms
-    # cameras are unloaded on. Nothing is published on a red run.
     needs: version
     uses: ./.github/workflows/test.yml
 
@@ -119,8 +115,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          # The active LTS rather than the floor: this job only has to run the publish,
-          # and it is the one that will need a current npm for trusted publishing.
+          # The active LTS rather than the floor: this job only has to run the publish.
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci

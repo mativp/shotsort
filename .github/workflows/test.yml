@@ -16,8 +16,7 @@ jobs:
       matrix:
         # The oldest Node the manifest claims to support, the LTS most people are on,
         # and the one that becomes LTS next -- so a release that breaks on it is found
-        # before anyone upgrades into the breakage. Nothing end-of-life is tested: a
-        # runtime that no longer takes security fixes is not one to promise support for.
+        # before anyone upgrades into the breakage.
         node-version: ['22', '24', '26']
         os: [ubuntu-latest]
         include:
