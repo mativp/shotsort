@@ -42,6 +42,13 @@ const EXIT_EVERYTHING_PLACED = 0;
 const EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND = 1;
 const EXIT_BAD_COMMAND_LINE = 2;
 
+// Permissions are the one thing a Windows runner will not honour: chmod there leaves a
+// folder readable and writable, so the checks that turn on being refused say so rather
+// than failing for a reason that is not the program's. Root is the other such reader --
+// the bits are set and ignored just the same -- so a suite run in a container as root
+// steps over them too.
+const THE_FILESYSTEM_HONOURS_PERMISSIONS = process.platform !== 'win32' && process.getuid?.() !== 0;
+
 let failedCheckCount = 0;
 
 function expect(whatShouldBeTrue, itWasTrue, detailWhenItWasNot = '') {
@@ -72,7 +79,9 @@ function everySourceFileUnder(projectRoot) {
   const walk = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((directoryEntry) => {
     const relativePath = path.relative(projectRoot, path.join(directory, directoryEntry.name));
     if (directoryEntry.isDirectory()) return walk(path.join(directory, directoryEntry.name));
-    return directoryEntry.name.endsWith('.mjs') ? [relativePath] : [];
+    // Spelled with slashes whatever the platform, since every caller matches these against
+    // a name written by hand: 'src/formats/' finds nothing in a list of 'src\formats\'.
+    return directoryEntry.name.endsWith('.mjs') ? [relativePath.split(path.sep).join('/')] : [];
   });
   return ['bin', 'cli', 'src'].flatMap((topLevel) => walk(path.join(projectRoot, topLevel)));
 }
@@ -241,12 +250,16 @@ function containersThatAreLegalButUnusual() {
   expect('a jpeg hiding its exif behind more segments than are worth walking gives up rather than hanging',
     dateOf('buried.jpg', jpegFileBuriedUnderManySegments('2026:07:04 09:00:00')) === null);
 
-  const unreadable = path.join(dump, 'unreadable.jpg');
-  writeFixtureFile(unreadable, jpegFile('2026:07:04 11:00:00'));
-  fs.chmodSync(unreadable, 0o000);
-  expect('a file that cannot be opened reports no date rather than throwing',
-    clockFoundIn(unreadable) === null);
-  fs.chmodSync(unreadable, 0o644);
+  if (THE_FILESYSTEM_HONOURS_PERMISSIONS) {
+    const unreadable = path.join(dump, 'unreadable.jpg');
+    writeFixtureFile(unreadable, jpegFile('2026:07:04 11:00:00'));
+    fs.chmodSync(unreadable, 0o000);
+    expect('a file that cannot be opened reports no date rather than throwing',
+      clockFoundIn(unreadable) === null);
+    fs.chmodSync(unreadable, 0o644);
+  } else {
+    expect('skipped: this filesystem does not refuse a file to its owner', true);
+  }
 }
 
 function theRawEveryMakerWrites() {
@@ -461,6 +474,10 @@ function aRawAndItsJpegOnDifferentCards() {
 }
 
 function whenTheFilesystemRefuses() {
+  if (!THE_FILESYSTEM_HONOURS_PERMISSIONS) {
+    expect('skipped: this filesystem does not refuse a destination to its owner', true);
+    return;
+  }
   const dump = freshCardDump('unwritable-destination');
   const destination = path.join(temporaryDirectory, 'unwritable-library');
   fs.mkdirSync(destination);
@@ -572,7 +589,7 @@ function theOtherWaysToRunIt() {
   expect('--verbose prints a line for each of the eleven files it places',
     linesNamingAMovedFile.length === 11, verboseRun.standardOutput);
   expect('and those lines name the source and the destination',
-    linesNamingAMovedFile.every((line) => line.includes('DCIM/') || line.includes('STREAM/')),
+    linesNamingAMovedFile.every((line) => /DCIM[\\/]|STREAM[\\/]/.test(line)),
     linesNamingAMovedFile.slice(0, 3).join('\n'));
 
   const asJson = runCommand(['-n', '--json', dump]);
@@ -1149,11 +1166,6 @@ function tidyingUpFoldersItCannotRead() {
   expect('a copy run tidies nothing, every original still being where it was',
     applyPlan([], { moveInsteadOfCopying: false, directoriesToTidy: [disk] }).emptyDirectoriesRemoved === 0);
 }
-
-// Permissions are the one thing a Windows runner will not honour: chmod there leaves a
-// folder readable and writable, so the checks that turn on being refused say so rather
-// than failing for a reason that is not the program's.
-const THE_FILESYSTEM_HONOURS_PERMISSIONS = process.platform !== 'win32';
 
 function namingOneFileRatherThanAFolder() {
   const disk = aDirectoryHolding('one-file', {
