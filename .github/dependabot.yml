@@ -1,0 +1,27 @@
+version: 2
+
+updates:
+  # The actions in test.yml and release.yml are the only third-party code that runs
+  # anywhere near this project, and they are pinned to major tags that move under us.
+  # Grouped into one pull request: three actions bumping separately is three runs of a
+  # matrix that takes longer than reading the diff.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: chore(ci)
+
+  # There is exactly one dependency here and it is eslint, which never ships in the
+  # tarball. If Dependabot ever opens a pull request against "dependencies" rather than
+  # "devDependencies", something has gone wrong in package.json rather than upstream.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps-dev)
