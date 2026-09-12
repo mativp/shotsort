@@ -1,5 +1,10 @@
 # shotsort
 
+[![tests](https://github.com/mativp/shotsort/actions/workflows/test.yml/badge.svg)](https://github.com/mativp/shotsort/actions/workflows/test.yml)
+[![lines](https://img.shields.io/badge/lines-%E2%89%A599%25-brightgreen)](#test)
+[![branches](https://img.shields.io/badge/branches-%E2%89%A598%25-brightgreen)](#test)
+[![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#test)
+
 Sort a folder of camera files into one folder per shooting day, using the date
 the camera wrote inside each file. No dependencies, no exiftool.
 
@@ -264,12 +269,13 @@ you named.
 ## Test
 
 ```sh
-npm test          # both suites
-npm run lint      # eslint
-npm run coverage  # both suites under Node's coverage reporter
+npm test                # every suite
+npm run lint            # eslint
+npm run coverage        # every suite under Node's coverage reporter
+npm run coverage:check  # the same, failing below the floors the badges state
 ```
 
-Two suites, no test framework:
+Three suites, no test framework:
 
 `test/unittest.mjs` runs without a filesystem. Format readers are handed a
 `Buffer` and the planner a stub that answers "does this path exist" and "are
@@ -292,6 +298,37 @@ fixture that exercises it can share one misunderstanding of a format and agree
 with each other forever; exiftool was written from real files, so putting the
 fixture to it stops that. Three fixtures are recorded as reading differently on
 purpose, each with the reason.
+
+### What the numbers mean
+
+The line and branch figures on the badges are a floor, enforced by `npm run
+coverage:check` on every pull request. They are not a target reached by counting
+lines: most of the branches in a format reader are the ones that fire on a file
+that went wrong, so the suite cuts every fixture short a byte at a time and reads
+what is left, then puts each of those bytes back as `0x00` and as `0xff` and
+reads it again. A file that stops half way has to read as nothing, or as the
+moment it holds, and never as a different shot; a file that went bad has to read
+as something rather than throw. Between them those two sweeps run some 170,000
+reads over every format in the catalogue, and they are what the branch figure is
+made of.
+
+The mutation score is measured by hand rather than in CI, because a run takes
+minutes where the suite takes seconds. It is the sharper number: it changes the
+program in one small way at a time — a `<` for a `<=`, a constant for another, a
+condition for `true` — and reports every change no check noticed. A line the
+suite runs but never checks counts as covered and survives mutation, which is why
+this is the figure that says whether the tests assert anything rather than merely
+execute the code. Survivors are treated as real gaps rather than noise. Stryker
+is not a dependency of this package and is not in the manifest; the two configs
+are committed so a run is reproducible. Each module is put to the cheapest suite
+that exercises it — the ones that decide things to the unit suite, the ones whose
+job is the disk to the end to end suite:
+
+```sh
+npm install --no-save @stryker-mutator/core
+npx stryker run                          # the modules that decide things
+npx stryker run stryker.disk.json        # the modules that touch the disk
+```
 
 ## Buy me a coffee
 

@@ -22,6 +22,7 @@
     "test:end-to-end": "node test/selftest.mjs",
     "lint": "eslint .",
     "coverage": "node --experimental-test-coverage --test test/coverage.mjs",
+    "coverage:check": "node --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=98 --test-coverage-functions=99 --test test/coverage.mjs",
     "prepublishOnly": "npm run lint && npm test",
     "test:against-exiftool": "node test/oracle.mjs"
   },

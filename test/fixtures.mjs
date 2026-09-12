@@ -56,6 +56,8 @@ const PRETEND_VIDEO_DATA_FILL_BYTE = 7;
 const PRETEND_HLG_PHOTO_FILL_BYTE = 3;
 const BYTES_IN_PRETEND_HLG_PHOTO = 64;
 const TRANSPORT_STREAM_SYNC_BYTE = 0x47;
+const BYTES_IN_A_PRETEND_TRUNCATED_MOVIE = 64;
+const BYTES_IN_AN_ISO_BOX_SIZE_FIELD = 4;
 const BYTES_IN_PRETEND_AVCHD_CLIP = 2048;
 const BYTES_IN_PRETEND_CLIP_INFO_SIDECAR = 64;
 const BYTES_MAKING_THE_SECOND_PHOTO_DIFFERENT = 64;
@@ -519,7 +521,7 @@ export function minoltaRawFile(dateTimeOriginal) {
     body, Buffer.alloc(64, 5)]);
 }
 
-export function canonCiffRawFile(cameraClock) {
+export function canonCiffRawFile(cameraClock, { heapsTheCaptureTimeIsBuriedUnder = 1 } = {}) {
   const captureTime = Buffer.alloc(BYTES_IN_A_CIFF_CAPTURE_TIME);
   captureTime.writeUInt32LE(secondsSince1970For(cameraClock), 0);
   captureTime.writeInt32LE(0, 4);
@@ -542,15 +544,17 @@ export function canonCiffRawFile(cameraClock) {
     return buffer;
   };
 
-  const innerHeap = heapHolding([entry(CIFF_TAG_CAPTURE_TIME, captureTime.length, 0)], captureTime);
-  const outerHeap = heapHolding([entry(CIFF_TAG_IMAGE_PROPERTIES, innerHeap.length, 0)], innerHeap);
+  let heap = heapHolding([entry(CIFF_TAG_CAPTURE_TIME, captureTime.length, 0)], captureTime);
+  for (let level = 0; level < heapsTheCaptureTimeIsBuriedUnder; level++) {
+    heap = heapHolding([entry(CIFF_TAG_IMAGE_PROPERTIES, heap.length, 0)], heap);
+  }
 
   const header = Buffer.alloc(CIFF_HEADER_BYTES);
   header.write(TIFF_LITTLE_ENDIAN_MARK, 0, 'latin1');
   header.writeUInt32LE(CIFF_HEADER_BYTES, 2);
   header.write('HEAPCCDR', 6, 'latin1');
   header.writeUInt32LE(0x00010002, 14);
-  return Buffer.concat([header, outerHeap]);
+  return Buffer.concat([header, heap]);
 }
 
 export function sigmaRawFile(cameraClock) {
@@ -741,6 +745,7 @@ export function matroskaMovie(cameraClock) {
 
 const ASF_HEADER_OBJECT_ID = Buffer.from('3026b2758e66cf11a6d900aa0062ce6c', 'hex');
 const ASF_FILE_PROPERTIES_OBJECT_ID = Buffer.from('a1dcab8c47a9cf118ee400c00c205365', 'hex');
+const ASF_PADDING_OBJECT_ID = Buffer.from('7400000000000000000000000000000f', 'hex');
 const BYTES_IN_AN_ASF_OBJECT_HEADER = 24;
 const HUNDRED_NANOSECONDS_PER_SECOND = 10000000;
 const SECONDS_BETWEEN_1601_AND_1970 = 11644473600;
@@ -829,7 +834,7 @@ export function pngStillDatedOnlyByWhenItWasLastWritten(cameraClock) {
   return pngFileHolding([pngChunk('tIME', lastWritten)]);
 }
 
-const REDCODE_MARK = 'RED2';
+const REDCODE_MARK = 'RED';
 const BYTES_FROM_A_REDCODE_FILE_START_TO_ITS_MARK = 4;
 const BYTES_IN_A_PRETEND_REDCODE_HEADER = 0x44;
 const REDCODE_FIRST_TIMECODE_RECORD = 0x1000;
@@ -838,6 +843,7 @@ const REDCODE_FILLER_RECORD = 0x1019;
 const BYTES_IN_A_REDCODE_RECORD_HEADER = 4;
 const BYTES_IN_A_REDCODE_TIMECODE = 11;
 const SHORTEST_REDCODE_DIRECTORY_WORTH_TRUSTING = 300;
+const BYTES_FROM_A_FIRST_VERSION_SECOND_BLOCK_TO_ITS_DIRECTORY = 0x22;
 
 function redcodeRecord(recordNumber, value) {
   const header = Buffer.alloc(BYTES_IN_A_REDCODE_RECORD_HEADER);
@@ -846,7 +852,7 @@ function redcodeRecord(recordNumber, value) {
   return Buffer.concat([header, value]);
 }
 
-export function redcodeClip(cameraClock, { headerSaysWhereTheDirectoryIs = true } = {}) {
+export function redcodeClip(cameraClock, { headerSaysWhereTheDirectoryIs = true, version = '2' } = {}) {
   const [year, month, day, hour, minute, second] = cameraClock.split(/[-: ]/).map(Number);
   const twoDigits = (number) => String(number).padStart(2, '0');
   const runOfDigits = `${year}${twoDigits(month)}${twoDigits(day)}${twoDigits(hour)}${twoDigits(minute)}${twoDigits(second)}`;
@@ -869,7 +875,20 @@ export function redcodeClip(cameraClock, { headerSaysWhereTheDirectoryIs = true 
   howLongTheDirectoryIs.writeUInt16BE(directory.length);
 
   const header = Buffer.alloc(BYTES_IN_A_PRETEND_REDCODE_HEADER);
-  header.write(REDCODE_MARK, BYTES_FROM_A_REDCODE_FILE_START_TO_ITS_MARK, 'latin1');
+  header.write(`${REDCODE_MARK}${version}`, BYTES_FROM_A_REDCODE_FILE_START_TO_ITS_MARK, 'latin1');
+
+  // The first version of the format keeps its directory in a block of its own, a fixed
+  // distance into the one after the header; the second keeps it in the header block.
+  if (version === '1') {
+    header.writeUInt32BE(header.length, 0);
+    return Buffer.concat([
+      header,
+      Buffer.alloc(BYTES_FROM_A_FIRST_VERSION_SECOND_BLOCK_TO_ITS_DIRECTORY),
+      howLongTheDirectoryIs,
+      directory,
+    ]);
+  }
+
   const block = Buffer.concat([header, howLongTheDirectoryIs, directory]);
   block.writeUInt32BE(block.length, 0);
   return block;
@@ -914,4 +933,182 @@ export function buildCardDump(directory, { everyFileStampedAt = null } = {}) {
   writeFixtureFile(path.join(directory, '.Spotlight-V100', 'junk.JPG'), jpegFile('1999:01:01 00:00:00'));
 
   return directory;
+}
+
+// Every format this tool claims to read, built at one moment so the two suites that walk
+// them can say the same thing about each. `test/oracle.mjs` puts the list to exiftool;
+// `test/unittest.mjs` cuts each one short and corrupts it to check that a card holding a
+// half-written file is read as undated rather than throwing. A format added here is
+// therefore checked both ways round without either suite being touched.
+export const WHEN_A_CAMERA_WOULD_WRITE_IT = '2021:03:04 05:06:07';
+export const WHEN_SPELLED_OUT_WITH_DASHES = '2021-03-04 05:06:07';
+export const WHEN_SPELLED_OUT_WITH_A_ZONE = '2021-03-04T05:06:07+0200';
+export const WHEN_WRITTEN_IN_WORDS = 'Thu Mar 04 05:06:07 2021';
+export const WHEN_WRITTEN_THE_WAY_MAIL_HEADERS_DO = 'Thu, 04 Mar 2021 05:06:07 +0000';
+export const A_CLOCK_THE_READER_MUST_PASS_OVER = '2001-01-01 00:00:00';
+export const THE_ONE_MOMENT_EVERY_FIXTURE_HOLDS = '2021-03-04 05:06:07';
+
+export const everyFixtureFormatIsBuiltFrom = () => [
+  ['jpeg.JPG', jpegFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['jpeg-with-a-restart-marker-first.JPG', jpegFileWithARestartMarkerFirst(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['jpeg-behind-the-segments-a-photo-has.JPG',
+    jpegFileBehindAsManySegmentsAsAPhotoReallyHas(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['jpeg-behind-more-segments-than-are-walked.JPG',
+    jpegFileBuriedUnderManySegments(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['tiff.TIF', tiffFile({
+    signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal: WHEN_A_CAMERA_WOULD_WRITE_IT,
+  })],
+  ['tiff-written-big-endian.TIF', bigEndianTiffFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['tiff-with-only-a-modify-date.TIF', tiffFileWithTheDateInItsMainDirectory(
+    TIFF_TAG_MODIFY_DATE, WHEN_A_CAMERA_WOULD_WRITE_IT,
+  )],
+  ['big-tiff.TIF', bigTiffFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['big-tiff-written-big-endian.TIF', bigTiffFile(WHEN_A_CAMERA_WOULD_WRITE_IT, { bigEndian: true })],
+  ['big-tiff-pointing-with-a-narrow-offset.TIF', bigTiffFile(WHEN_A_CAMERA_WOULD_WRITE_IT, {
+    bigEndian: true, pointerType: TIFF_VALUE_TYPE_LONG,
+  })],
+  ['panasonic.RW2', tiffFile({
+    signature: PANASONIC_RAW_SIGNATURE, dateTimeOriginal: WHEN_A_CAMERA_WOULD_WRITE_IT,
+  })],
+  ['panasonic-dated-only-in-its-preview.RW2',
+    panasonicRawWithDateOnlyInEmbeddedJpeg(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['olympus.ORF', tiffFile({
+    signature: OLYMPUS_RAW_SIGNATURE, dateTimeOriginal: WHEN_A_CAMERA_WOULD_WRITE_IT,
+  })],
+  ['olympus-on-a-later-body.ORF', tiffFile({
+    signature: OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES, dateTimeOriginal: WHEN_A_CAMERA_WOULD_WRITE_IT,
+  })],
+  ['canon.CR3', canonRawFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['canon-ciff.CRW', canonCiffRawFile(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['fujifilm.RAF', fujifilmRawFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['minolta.MRW', minoltaRawFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['sigma.X3F', sigmaRawFile(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['heif.HEIC', heifStill(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['jpeg-xl.JXL', jpegXlStill(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['png.PNG', pngStill(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['png-dated-only-in-its-text.PNG', pngStillDatedOnlyInItsText(WHEN_WRITTEN_THE_WAY_MAIL_HEADERS_DO)],
+  ['png-dated-only-by-when-it-was-written.PNG',
+    pngStillDatedOnlyByWhenItWasLastWritten(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['webp.WEBP', webPStill(WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['movie.MP4', movieFile(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['movie-with-a-64-bit-clock.MP4', movieFile(WHEN_SPELLED_OUT_WITH_DASHES, { creationTimeIs64Bit: true })],
+  ['movie-whose-box-runs-to-the-end.MOV', movieFileWhoseMovieBoxRunsToTheEnd(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['movie-saying-which-zone-it-is-in.MOV',
+    movieFileSayingWhichZoneItsClockIsIn(A_CLOCK_THE_READER_MUST_PASS_OVER, WHEN_SPELLED_OUT_WITH_A_ZONE)],
+  ['movie-carrying-a-canon-thumbnail.MOV',
+    movieFileCarryingACanonThumbnail(A_CLOCK_THE_READER_MUST_PASS_OVER, WHEN_A_CAMERA_WOULD_WRITE_IT)],
+  ['movie-with-an-apple-date.MOV',
+    movieFileWithAnAppleCreationDate(A_CLOCK_THE_READER_MUST_PASS_OVER, WHEN_SPELLED_OUT_WITH_A_ZONE)],
+  ['movie-with-an-apple-date-in-an-iso-metadata-box.MP4',
+    movieFileWithAnAppleCreationDate(A_CLOCK_THE_READER_MUST_PASS_OVER, WHEN_SPELLED_OUT_WITH_A_ZONE,
+      { isoStyleMetadataBox: true })],
+  ['avi-recording-when-it-was-shot.AVI', aviFileRecordingWhenItWasShot(WHEN_WRITTEN_IN_WORDS)],
+  ['avi-saying-only-when-it-was-created.AVI', aviFileSayingOnlyWhenItWasCreated(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['matroska.MKV', matroskaMovie(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['windows-media.WMV', windowsMediaMovie(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['digital-video.DV', digitalVideoClip(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['redcode.R3D', redcodeClip(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['redcode-whose-header-does-not-say-where-the-directory-is.R3D',
+    redcodeClip(WHEN_SPELLED_OUT_WITH_DASHES, { headerSaysWhereTheDirectoryIs: false })],
+  ['redcode-of-the-first-version.R3D', redcodeClip(WHEN_SPELLED_OUT_WITH_DASHES, { version: '1' })],
+];
+
+// The shapes a walk must not be led round forever by, and the two format variants no
+// camera in the catalogue above writes. None of these is a file a camera would produce:
+// they are what a corrupted card, or a maker's older firmware, hands the reader instead.
+
+const LISTS_NESTED_DEEPER_THAN_A_CAMERA_NESTS_THEM = 6;
+
+export function aviFileNestingItsListsDeeperThanACameraDoes(dateWrittenOut) {
+  let nested = [riffChunk(RIFF_RECORDING_DATE_CHUNK, Buffer.from(`${dateWrittenOut}\n\0`, 'latin1'))];
+  for (let level = 0; level < LISTS_NESTED_DEEPER_THAN_A_CAMERA_NESTS_THEM; level++) {
+    nested = [riffList('hdrl', nested)];
+  }
+  return riffFile('AVI ', [...nested, riffChunk('movi', Buffer.alloc(64))]);
+}
+
+const EBML_HEADER_ELEMENT_BYTES = [0x1a, 0x45, 0xdf, 0xa3];
+const EBML_LENGTH_OF_NOTHING = 0x80;
+// The width of an id is written in the leading zeros of its first byte, so a byte with
+// four of them claims an id five bytes wide -- wider than any id is allowed to be.
+const AN_ID_CLAIMING_TO_BE_WIDER_THAN_ANY_ID_MAY_BE = 0x08;
+
+export function matroskaMovieWhoseIdIsWiderThanAnyIdMayBe() {
+  return Buffer.from([
+    ...EBML_HEADER_ELEMENT_BYTES, EBML_LENGTH_OF_NOTHING,
+    AN_ID_CLAIMING_TO_BE_WIDER_THAN_ANY_ID_MAY_BE, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+}
+
+const A_BOX_SIZE_SMALLER_THAN_THE_HEADER_IT_IS_WRITTEN_IN = 4;
+
+export function movieFileWhoseBoxIsSmallerThanItsOwnHeader() {
+  const box = Buffer.alloc(BYTES_IN_A_PRETEND_TRUNCATED_MOVIE);
+  box.writeUInt32BE(A_BOX_SIZE_SMALLER_THAN_THE_HEADER_IT_IS_WRITTEN_IN, 0);
+  box.write('moov', BYTES_IN_AN_ISO_BOX_SIZE_FIELD, 'latin1');
+  return box;
+}
+
+// The same worry as the nested walks above, for the walks that run along a level rather
+// than down one: each stops after more items than a real file carries, and these are the
+// files that carry more. A camera writes none of them.
+const CHUNKS_MORE_THAN_A_PNG_WALK_LOOKS_THROUGH = 300;
+const OBJECTS_MORE_THAN_AN_ASF_WALK_LOOKS_THROUGH = 300;
+const CHUNKS_MORE_THAN_A_RIFF_WALK_LOOKS_THROUGH = 1100;
+const RECORDS_MORE_THAN_A_REDCODE_WALK_LOOKS_THROUGH = 300;
+const PADDING_CHUNK_BODY_BYTES = 1;
+
+export function pngStillBuriedUnderMoreChunksThanAreWalked(dateTimeOriginal) {
+  const padding = Array.from({ length: CHUNKS_MORE_THAN_A_PNG_WALK_LOOKS_THROUGH },
+    () => pngChunk('gAMA', Buffer.alloc(PADDING_CHUNK_BODY_BYTES)));
+  return pngFileHolding([...padding, pngChunk('eXIf', tiffFile({
+    signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal,
+  }))]);
+}
+
+export function windowsMediaMovieBuriedUnderMoreObjectsThanAreWalked(cameraClock) {
+  const fileProperties = Buffer.alloc(80);
+  fileProperties.writeBigUInt64LE(
+    BigInt(secondsSince1970For(cameraClock) + SECONDS_BETWEEN_1601_AND_1970) * BigInt(HUNDRED_NANOSECONDS_PER_SECOND),
+    24,
+  );
+  const padding = Array.from({ length: OBJECTS_MORE_THAN_AN_ASF_WALK_LOOKS_THROUGH },
+    () => asfObject(ASF_PADDING_OBJECT_ID, Buffer.alloc(PADDING_CHUNK_BODY_BYTES)));
+  const children = Buffer.concat([...padding, asfObject(ASF_FILE_PROPERTIES_OBJECT_ID, fileProperties)]);
+
+  const howManyChildrenAndTwoReservedBytes = Buffer.alloc(6);
+  howManyChildrenAndTwoReservedBytes.writeUInt32LE(padding.length + 1, 0);
+  return asfObject(ASF_HEADER_OBJECT_ID, Buffer.concat([howManyChildrenAndTwoReservedBytes, children]));
+}
+
+export function aviFileBuriedUnderMoreChunksThanAreWalked(dateWrittenOut) {
+  const padding = Array.from({ length: CHUNKS_MORE_THAN_A_RIFF_WALK_LOOKS_THROUGH },
+    () => riffChunk('JUNK', Buffer.alloc(PADDING_CHUNK_BODY_BYTES)));
+  return riffFile('AVI ', [
+    ...padding,
+    riffChunk(RIFF_RECORDING_DATE_CHUNK, Buffer.from(`${dateWrittenOut}\n\0`, 'latin1')),
+  ]);
+}
+
+export function redcodeClipBuriedUnderMoreRecordsThanAreWalked(cameraClock) {
+  const [year, month, day, hour, minute, second] = cameraClock.split(/[-: ]/).map(Number);
+  const twoDigits = (number) => String(number).padStart(2, '0');
+  const runOfDigits = `${year}${twoDigits(month)}${twoDigits(day)}${twoDigits(hour)}${twoDigits(minute)}${twoDigits(second)}`;
+
+  const records = [
+    redcodeRecord(REDCODE_FIRST_TIMECODE_RECORD, Buffer.alloc(BYTES_IN_A_REDCODE_TIMECODE)),
+    ...Array.from({ length: RECORDS_MORE_THAN_A_REDCODE_WALK_LOOKS_THROUGH },
+      () => redcodeRecord(REDCODE_FILLER_RECORD, Buffer.alloc(PADDING_CHUNK_BODY_BYTES))),
+    redcodeRecord(REDCODE_WHEN_IT_WAS_SHOT_RECORD, Buffer.from(`${runOfDigits}\0`, 'latin1')),
+  ];
+
+  const directory = Buffer.concat(records);
+  const howLongTheDirectoryIs = Buffer.alloc(2);
+  howLongTheDirectoryIs.writeUInt16BE(directory.length);
+
+  const header = Buffer.alloc(BYTES_IN_A_PRETEND_REDCODE_HEADER);
+  header.write(`${REDCODE_MARK}2`, BYTES_FROM_A_REDCODE_FILE_START_TO_ITS_MARK, 'latin1');
+  const block = Buffer.concat([header, howLongTheDirectoryIs, directory]);
+  block.writeUInt32BE(block.length, 0);
+  return block;
 }

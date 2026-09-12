@@ -2,6 +2,12 @@
 // house style is long, explanatory names, so `id-length` sets a floor rather than a ceiling
 // and there is no line-length rule fighting it.
 export default [
+  // The working directories of a mutation testing run: a whole copy of the project with
+  // one deliberate mistake in it, and the reports that come out of the run. Linting those
+  // would be linting the mutants.
+  {
+    ignores: ['.stryker-tmp/**', 'reports/**', 'coverage/**'],
+  },
   {
     files: ['**/*.mjs'],
     languageOptions: {

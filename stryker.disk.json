@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "The half of the program the unit suite cannot reach, because its job is the disk and the command line. Mutated against the end to end suite, which is slower but is the only one that runs these at all. See stryker.config.json for the rest.",
+  "packageManager": "npm",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "node test/selftest.mjs"
+  },
+  "mutate": [
+    "src/apply.mjs",
+    "src/scan.mjs",
+    "src/destination.mjs",
+    "src/extensions.mjs",
+    "cli/usage.mjs",
+    "bin/shotsort.mjs"
+  ],
+  "coverageAnalysis": "off",
+  "concurrency": 10,
+  "timeoutMS": 20000,
+  "timeoutFactor": 2,
+  "reporters": [
+    "clear-text",
+    "json"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation/disk.json"
+  },
+  "clearTextReporter": {
+    "maxTestsToLog": 0,
+    "allowColor": false
+  },
+  "thresholds": {
+    "high": 95,
+    "low": 90,
+    "break": null
+  }
+}

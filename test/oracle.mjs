@@ -15,17 +15,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import * as fixtures from './fixtures.mjs';
+import { everyFixtureFormatIsBuiltFrom, THE_ONE_MOMENT_EVERY_FIXTURE_HOLDS } from './fixtures.mjs';
 import { readCameraClockFromFile } from '../src/formats/registry.mjs';
 import { formatCameraClock } from '../src/clock.mjs';
-
-const WHEN_A_CAMERA_WOULD_WRITE_IT = '2021:03:04 05:06:07';
-const WHEN_SPELLED_OUT_WITH_DASHES = '2021-03-04 05:06:07';
-const WHEN_SPELLED_OUT_WITH_A_ZONE = '2021-03-04T05:06:07+0200';
-const WHEN_WRITTEN_IN_WORDS = 'Thu Mar 04 05:06:07 2021';
-const WHEN_WRITTEN_THE_WAY_MAIL_HEADERS_DO = 'Thu, 04 Mar 2021 05:06:07 +0000';
-const A_CLOCK_THE_READER_MUST_PASS_OVER = '2001-01-01 00:00:00';
-const THE_ONE_MOMENT_EVERY_FIXTURE_HOLDS = '2021-03-04 05:06:07';
 
 // Every tag exiftool would call a shooting time, in the order this tool trusts them.
 const WHAT_EXIFTOOL_CALLS_A_SHOOTING_TIME = [
@@ -46,71 +38,6 @@ const WHERE_THE_TWO_ARE_MEANT_TO_PART = {
   'movie-with-an-apple-date-in-an-iso-metadata-box.MP4':
     'exiftool reads Apple keys only from a QuickTime metadata box; this reads either',
 };
-
-const fixtureFiles = () => [
-  ['jpeg.JPG', fixtures.jpegFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['jpeg-with-a-restart-marker-first.JPG', fixtures.jpegFileWithARestartMarkerFirst(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['jpeg-behind-the-segments-a-photo-has.JPG',
-    fixtures.jpegFileBehindAsManySegmentsAsAPhotoReallyHas(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['jpeg-behind-more-segments-than-are-walked.JPG',
-    fixtures.jpegFileBuriedUnderManySegments(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['tiff.TIF', fixtures.tiffFile({
-    signature: fixtures.TIFF_STANDARD_SIGNATURE, dateTimeOriginal: WHEN_A_CAMERA_WOULD_WRITE_IT,
-  })],
-  ['tiff-written-big-endian.TIF', fixtures.bigEndianTiffFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['tiff-with-only-a-modify-date.TIF', fixtures.tiffFileWithTheDateInItsMainDirectory(
-    fixtures.TIFF_TAG_MODIFY_DATE, WHEN_A_CAMERA_WOULD_WRITE_IT,
-  )],
-  ['big-tiff.TIF', fixtures.bigTiffFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['big-tiff-written-big-endian.TIF', fixtures.bigTiffFile(WHEN_A_CAMERA_WOULD_WRITE_IT, { bigEndian: true })],
-  ['big-tiff-pointing-with-a-narrow-offset.TIF', fixtures.bigTiffFile(WHEN_A_CAMERA_WOULD_WRITE_IT, {
-    bigEndian: true, pointerType: fixtures.TIFF_VALUE_TYPE_LONG,
-  })],
-  ['panasonic.RW2', fixtures.tiffFile({
-    signature: fixtures.PANASONIC_RAW_SIGNATURE, dateTimeOriginal: WHEN_A_CAMERA_WOULD_WRITE_IT,
-  })],
-  ['panasonic-dated-only-in-its-preview.RW2',
-    fixtures.panasonicRawWithDateOnlyInEmbeddedJpeg(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['olympus.ORF', fixtures.tiffFile({
-    signature: fixtures.OLYMPUS_RAW_SIGNATURE, dateTimeOriginal: WHEN_A_CAMERA_WOULD_WRITE_IT,
-  })],
-  ['olympus-on-a-later-body.ORF', fixtures.tiffFile({
-    signature: fixtures.OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES, dateTimeOriginal: WHEN_A_CAMERA_WOULD_WRITE_IT,
-  })],
-  ['canon.CR3', fixtures.canonRawFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['canon-ciff.CRW', fixtures.canonCiffRawFile(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['fujifilm.RAF', fixtures.fujifilmRawFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['minolta.MRW', fixtures.minoltaRawFile(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['sigma.X3F', fixtures.sigmaRawFile(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['heif.HEIC', fixtures.heifStill(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['jpeg-xl.JXL', fixtures.jpegXlStill(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['png.PNG', fixtures.pngStill(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['png-dated-only-in-its-text.PNG', fixtures.pngStillDatedOnlyInItsText(WHEN_WRITTEN_THE_WAY_MAIL_HEADERS_DO)],
-  ['png-dated-only-by-when-it-was-written.PNG',
-    fixtures.pngStillDatedOnlyByWhenItWasLastWritten(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['webp.WEBP', fixtures.webPStill(WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['movie.MP4', fixtures.movieFile(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['movie-with-a-64-bit-clock.MP4', fixtures.movieFile(WHEN_SPELLED_OUT_WITH_DASHES, { creationTimeIs64Bit: true })],
-  ['movie-whose-box-runs-to-the-end.MOV', fixtures.movieFileWhoseMovieBoxRunsToTheEnd(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['movie-saying-which-zone-it-is-in.MOV',
-    fixtures.movieFileSayingWhichZoneItsClockIsIn(A_CLOCK_THE_READER_MUST_PASS_OVER, WHEN_SPELLED_OUT_WITH_A_ZONE)],
-  ['movie-carrying-a-canon-thumbnail.MOV',
-    fixtures.movieFileCarryingACanonThumbnail(A_CLOCK_THE_READER_MUST_PASS_OVER, WHEN_A_CAMERA_WOULD_WRITE_IT)],
-  ['movie-with-an-apple-date.MOV',
-    fixtures.movieFileWithAnAppleCreationDate(A_CLOCK_THE_READER_MUST_PASS_OVER, WHEN_SPELLED_OUT_WITH_A_ZONE)],
-  ['movie-with-an-apple-date-in-an-iso-metadata-box.MP4',
-    fixtures.movieFileWithAnAppleCreationDate(A_CLOCK_THE_READER_MUST_PASS_OVER, WHEN_SPELLED_OUT_WITH_A_ZONE,
-      { isoStyleMetadataBox: true })],
-  ['avi-recording-when-it-was-shot.AVI', fixtures.aviFileRecordingWhenItWasShot(WHEN_WRITTEN_IN_WORDS)],
-  ['avi-saying-only-when-it-was-created.AVI', fixtures.aviFileSayingOnlyWhenItWasCreated(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['matroska.MKV', fixtures.matroskaMovie(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['windows-media.WMV', fixtures.windowsMediaMovie(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['digital-video.DV', fixtures.digitalVideoClip(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['redcode.R3D', fixtures.redcodeClip(WHEN_SPELLED_OUT_WITH_DASHES)],
-  ['redcode-whose-header-does-not-say-where-the-directory-is.R3D',
-    fixtures.redcodeClip(WHEN_SPELLED_OUT_WITH_DASHES, { headerSaysWhereTheDirectoryIs: false })],
-];
-
 const exiftoolIsInstalled = () => spawnSync('exiftool', ['-ver'], { encoding: 'utf8' }).status === 0;
 
 function askExiftool(filePaths) {
@@ -138,7 +65,7 @@ function main() {
   }
 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'shotsort-oracle-'));
-  const built = fixtureFiles();
+  const built = everyFixtureFormatIsBuiltFrom();
   for (const [name, bytes] of built) fs.writeFileSync(path.join(directory, name), bytes);
 
   const answers = askExiftool(built.map(([name]) => path.join(directory, name)));

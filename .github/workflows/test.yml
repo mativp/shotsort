@@ -28,3 +28,16 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+
+  coverage:
+    # The floors the badges in the README state. They are a floor, not a target: a change
+    # that adds a branch nothing checks fails here rather than quietly lowering the number.
+    # Pinned to one Node because the threshold flags only exist from Node 22.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run coverage:check

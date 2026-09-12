@@ -2,16 +2,31 @@
 // What the seams bought: these run with no disk under them at all. A format reader is
 // handed a Buffer, and the planner is handed a probe that answers from a plain object, so
 // a plan can be checked for what it decided rather than for the files it left behind.
-import { jpegFile, movieFile, tiffFile, PANASONIC_RAW_SIGNATURE } from './fixtures.mjs';
-import { byteSourceForBuffer } from '../src/bytes.mjs';
-import { readCameraClockFromByteSource } from '../src/formats/registry.mjs';
 import {
-  compareCameraClocks, cameraClockFromExifText, cameraClockFromIso8601, dayFolderFor,
-  formatCameraClock, layoutIsUsable,
+  jpegFile, movieFile, tiffFile, PANASONIC_RAW_SIGNATURE,
+  everyFixtureFormatIsBuiltFrom, THE_ONE_MOMENT_EVERY_FIXTURE_HOLDS, A_CLOCK_THE_READER_MUST_PASS_OVER,
+  aviFileNestingItsListsDeeperThanACameraDoes, aviFileRecordingWhenItWasShot, canonCiffRawFile, digitalVideoClip,
+  matroskaMovieWhoseIdIsWiderThanAnyIdMayBe, movieFileWhoseBoxIsSmallerThanItsOwnHeader,
+  aviFileBuriedUnderMoreChunksThanAreWalked, pngStill, pngStillBuriedUnderMoreChunksThanAreWalked,
+  redcodeClipBuriedUnderMoreRecordsThanAreWalked, windowsMediaMovie,
+  windowsMediaMovieBuriedUnderMoreObjectsThanAreWalked,
+} from './fixtures.mjs';
+import { byteSourceForBuffer } from '../src/bytes.mjs';
+import { FORMATS_IN_THE_ORDER_THEY_ARE_TRIED, readCameraClockFromByteSource } from '../src/formats/registry.mjs';
+import {
+  BYTES_IN_A_LONG_FIELD, BYTES_IN_A_SHORT_FIELD, readTwoByteWideTextAt, readUInt64EitherWayRoundAt,
+  readUnsignedOfWidthAt,
+} from '../src/bytes.mjs';
+import {
+  compareCameraClocks, cameraClockFrom, cameraClockFromDateWrittenOut, cameraClockFromExifText,
+  cameraClockFromIso8601, dayFolderFor, formatCameraClock, layoutIsUsable,
 } from '../src/clock.mjs';
 import { DATE_SOURCE } from '../src/dateSource.mjs';
 import { FILESYSTEM_DATE_USE } from '../src/dating.mjs';
-import { PLACEMENT, UNDATED_FOLDER_NAME, buildPlan } from '../src/plan.mjs';
+import {
+  NO_FREE_NAME_IN_THE_DAY_FOLDER, PLACEMENT, UNDATED_FOLDER_NAME, buildPlan, countPlacements,
+} from '../src/plan.mjs';
+import { fileAsItIsPlaced, reportAsJson, reportForATerminal } from '../cli/report.mjs';
 import { decideWhatToDo, WHAT_TO_DO } from '../cli/options.mjs';
 
 let failedCheckCount = 0;
@@ -52,6 +67,135 @@ function aParserReadsBytesWithNoFileUnderThem() {
     clockInside(Buffer.alloc(512, 0x41)) === null);
   expect('an empty file yields no date',
     clockInside(Buffer.alloc(0)) === null);
+}
+
+// A card pulled out mid-write, a copy that stopped half way, a file whose end never made it
+// off the buffer: the reader meets all three, and a format reader walking a length field it
+// has not got the bytes for is where a parser throws. So every fixture is cut short at
+// every byte and read again. The point is not only that nothing throws -- it is that a
+// half-written file is read as less than the whole and never as a different shot.
+const LONGEST_FIXTURE_CUT_AT_EVERY_BYTE = 16 * 1024;
+// One fixture carries more segments than any photo does, purely to prove the walk stops;
+// cutting it at every byte re-walks all of them and buys nothing, so it is stepped through
+// on a prime stride, which no structure in it is aligned to.
+const BYTES_STEPPED_OVER_IN_A_LONGER_FIXTURE = 13;
+
+const toTheMinute = (moment) => moment.slice(0, 'YYYY-MM-DD HH:MM'.length);
+const MOMENTS_A_CUT_FIXTURE_MAY_STILL_HOLD = new Set(
+  [THE_ONE_MOMENT_EVERY_FIXTURE_HOLDS, A_CLOCK_THE_READER_MUST_PASS_OVER].map(toTheMinute),
+);
+
+function everyCutOf(bytes) {
+  const step = bytes.length > LONGEST_FIXTURE_CUT_AT_EVERY_BYTE ? BYTES_STEPPED_OVER_IN_A_LONGER_FIXTURE : 1;
+  const cuts = [];
+  for (let cut = 0; cut <= bytes.length; cut += step) cuts.push(cut);
+  return cuts;
+}
+
+function aFileThatStopsHalfWayIsReadAsLessThanTheWhole() {
+  const readWrongly = [];
+  const threw = [];
+
+  for (const [fixtureName, bytes] of everyFixtureFormatIsBuiltFrom()) {
+    for (const cut of everyCutOf(bytes)) {
+      let found;
+      try {
+        found = clockInside(bytes.subarray(0, cut));
+      } catch (whatTheReaderThrew) {
+        threw.push(`${fixtureName} cut to ${cut} bytes: ${whatTheReaderThrew.message}`);
+        break;
+      }
+      if (found === null) continue;
+      const moment = formatCameraClock(found.clock);
+      if (!MOMENTS_A_CUT_FIXTURE_MAY_STILL_HOLD.has(toTheMinute(moment))) {
+        readWrongly.push(`${fixtureName} cut to ${cut} bytes read ${moment}`);
+      }
+    }
+  }
+
+  expect('no format reader throws on a file that stops half way, at any byte of any fixture',
+    threw.length === 0, threw.slice(0, 5).join('\n'));
+  expect('and a cut file reads as nothing or as the moment it holds, never as a different shot',
+    readWrongly.length === 0, readWrongly.slice(0, 5).join('\n'));
+}
+
+// The other half of the same worry: a card that went bad writes rubbish rather than
+// stopping. A length or a count read out of a corrupted byte is what sends a walk past the
+// end of the file or round forever, so every byte of every fixture is made to read 0x00 and
+// then 0xff -- the two that turn a field into nothing and into far more than the file holds.
+const BYTES_A_BAD_CARD_WRITES = [0x00, 0xff];
+
+function aFileGoneBadIsReadWithoutTheReaderGivingUp() {
+  const threw = [];
+
+  for (const [fixtureName, bytes] of everyFixtureFormatIsBuiltFrom()) {
+    for (const position of everyCutOf(bytes)) {
+      if (position === bytes.length) continue;
+      for (const rubbish of BYTES_A_BAD_CARD_WRITES) {
+        const corrupted = Buffer.from(bytes);
+        corrupted[position] = rubbish;
+        try {
+          clockInside(corrupted);
+        } catch (whatTheReaderThrew) {
+          threw.push(`${fixtureName} byte ${position} set to ${rubbish}: ${whatTheReaderThrew.message}`);
+        }
+      }
+    }
+  }
+
+  expect('no format reader throws on a file gone bad, whichever byte of whichever fixture went',
+    threw.length === 0, threw.slice(0, 5).join('\n'));
+}
+
+// A container is a tree, and a tree read out of bytes that went bad can point at itself.
+// Every walk in here therefore stops at a depth no real file reaches, and these are the
+// files that reach it: each one would be read forever, or read something that is not there,
+// if the ceiling were taken out.
+function theShapesAWalkMustNotBeLedRoundForeverBy() {
+  const dateWrittenOut = 'Thu Mar 04 05:06:07 2021';
+  expect('a RIFF nesting its lists deeper than a camera nests them is given up on',
+    clockInside(aviFileNestingItsListsDeeperThanACameraDoes(dateWrittenOut)) === null);
+  expect('while one nested the way a camcorder writes it is still read',
+    formatCameraClock(clockInside(aviFileRecordingWhenItWasShot(dateWrittenOut)).clock) === '2021-03-04 05:06:07');
+
+  expect('a CIFF heap buried deeper than a camera buries one is given up on',
+    clockInside(canonCiffRawFile('2021-03-04 05:06:07', { heapsTheCaptureTimeIsBuriedUnder: 10 })) === null);
+  expect('while the depth a camera does bury it at is still read',
+    formatCameraClock(clockInside(canonCiffRawFile('2021-03-04 05:06:07')).clock) === '2021-03-04 05:06:07');
+
+  expect('an element claiming an id wider than any id may be is refused',
+    clockInside(matroskaMovieWhoseIdIsWiderThanAnyIdMayBe()) === null);
+  expect('a box declaring itself smaller than the header it is written in is refused',
+    clockInside(movieFileWhoseBoxIsSmallerThanItsOwnHeader()) === null);
+}
+
+// The walks that run along a level rather than down one stop after more items than a real
+// file carries, for the same reason: a length read out of a corrupted byte can point at
+// the chunk it came from, and a walk that trusted it would never come back.
+function theFilesCarryingMoreThanAWalkLooksThrough() {
+  expect('a PNG burying its Exif under more chunks than are walked is given up on',
+    clockInside(pngStillBuriedUnderMoreChunksThanAreWalked('2021:03:04 05:06:07')) === null);
+  expect('while one carrying the chunks a photo really has is read',
+    formatCameraClock(clockInside(pngStill('2021:03:04 05:06:07')).clock) === '2021-03-04 05:06:07');
+
+  expect('a WMV burying its file properties under more objects than are walked is given up on',
+    clockInside(windowsMediaMovieBuriedUnderMoreObjectsThanAreWalked('2021-03-04 05:06:07')) === null);
+  expect('while one written the way a camcorder writes it is read',
+    formatCameraClock(clockInside(windowsMediaMovie('2021-03-04 05:06:07')).clock) === '2021-03-04 05:06:07');
+
+  expect('an AVI burying its date under more chunks than are walked is given up on',
+    clockInside(aviFileBuriedUnderMoreChunksThanAreWalked('Thu Mar 04 05:06:07 2021')) === null);
+  expect('and a Redcode directory holding more records than are walked is too',
+    clockInside(redcodeClipBuriedUnderMoreRecordsThanAreWalked('2021-03-04 05:06:07')) === null);
+}
+
+function theClipsOffATapeCamcorder() {
+  // A DV clip writes its year as two digits, so which century it is in has to be decided.
+  // Tape camcorders were sold through both, and a file from either has to land in its own.
+  expect('a tape shot in the nineties is filed in the nineteen hundreds',
+    formatCameraClock(clockInside(digitalVideoClip('1997-03-04 05:06:07')).clock) === '1997-03-04 05:06:07');
+  expect('and one shot since is filed in the two thousands',
+    formatCameraClock(clockInside(digitalVideoClip('2021-03-04 05:06:07')).clock) === '2021-03-04 05:06:07');
 }
 
 function theMarkOnAFileIsTheLastWordOnIt() {
@@ -217,6 +361,220 @@ function theSameFilesAlwaysGiveTheSamePlan() {
     JSON.stringify(planned) === JSON.stringify(buildPlan(files, {}, probeOver([]))));
 }
 
+// The registry only offers a reader a file its mark already matched, so a reader could in
+// principle trust that and read anything it was handed. None of them does, and this is what
+// says so: every reader that has a mark of its own is put to every fixture the mark refuses.
+function everyReaderRefusesAFileThatIsNotItsFormat() {
+  const fixtures = everyFixtureFormatIsBuiltFrom();
+  const readAnyway = [];
+
+  for (const format of FORMATS_IN_THE_ORDER_THEY_ARE_TRIED) {
+    if (format.recognisedBy === null) continue;
+    for (const [fixtureName, bytes] of fixtures) {
+      const byteSource = byteSourceForBuffer(bytes);
+      if (format.recognisedBy(byteSource)) continue;
+      if (format.read(byteSource) !== null) readAnyway.push(`${format.name} read ${fixtureName}`);
+    }
+  }
+
+  expect('a reader handed a file its own mark refuses reads nothing out of it',
+    readAnyway.length === 0, readAnyway.slice(0, 5).join('\n'));
+}
+
+function theByteReadersHandBackNothingRatherThanGuessing() {
+  const eightBytes = byteSourceForBuffer(Buffer.from([0, 0, 1, 0, 0, 0, 0, 2]));
+
+  expect('a field of no width at all counts as zero',
+    readUnsignedOfWidthAt(eightBytes, 0, 0) === 0);
+  expect('a four byte field is read big endian',
+    readUnsignedOfWidthAt(eightBytes, 0, BYTES_IN_A_SHORT_FIELD) === 256);
+  expect('an eight byte field is read big endian too',
+    readUnsignedOfWidthAt(eightBytes, 0, BYTES_IN_A_LONG_FIELD) === 0x0000010000000002);
+  expect('a field of a width no format writes is refused rather than half read',
+    readUnsignedOfWidthAt(eightBytes, 0, 3) === null);
+  expect('an eight byte field the file is too short for is refused',
+    readUnsignedOfWidthAt(byteSourceForBuffer(Buffer.alloc(4)), 0, BYTES_IN_A_LONG_FIELD) === null);
+
+  expect('an eight byte count may be read little endian, which is how BigTIFF writes one',
+    readUInt64EitherWayRoundAt(byteSourceForBuffer(Buffer.from([2, 0, 0, 0, 0, 0, 0, 0])), 0, true) === 2);
+  expect('two byte wide text past the end of the file is nothing, not an empty string',
+    readTwoByteWideTextAt(byteSourceForBuffer(Buffer.alloc(4)), 8, 4) === null);
+}
+
+function aClockIsBuiltOnlyFromFieldsThatWereThere() {
+  expect('a clock whose year was not there to read is no clock at all',
+    cameraClockFrom(null, null, null, null, null, null) === null);
+  expect('a clock whose fields were all read is built from them',
+    formatCameraClock(cameraClockFrom(2026, 8, 27, 10, 30, 0)) === '2026-08-27 10:30:00');
+  expect('no text to read is no clock, whichever way the text would have been written',
+    cameraClockFromDateWrittenOut(null) === null && cameraClockFromExifText(null) === null
+    && cameraClockFromIso8601(null) === null);
+  expect('a date written out with no seconds on it is read as the minute it names',
+    formatCameraClock(cameraClockFromDateWrittenOut('2001/ 1/27 13:42')) === '2001-01-27 13:42:00');
+  expect('a month name that is no month is not taken for one',
+    cameraClockFromDateWrittenOut('Xxx, 04 Zzz 2021 05:06:07 +0000') === null);
+}
+
+function aDayFolderWithNoFreeNameLeft() {
+  // Every name in the day folder and in all its numbered subfolders is taken, and none of
+  // them by this photo: there is nowhere left to put it and the plan has to say so rather
+  // than overwrite one of them.
+  const everyNameTaken = { exists: () => true, contentsMatch: () => false };
+  const plan = buildPlan([candidate('/card/DCIM/P1.JPG', { clock: exif('2026:09:01 10:00:00') })], {}, everyNameTaken);
+
+  expect('a photo with nowhere left to go is reported as placed nowhere',
+    plan.placements[0].placement === PLACEMENT.couldNotBePlaced);
+  expect('and it is given no target path rather than a made up one',
+    plan.placements[0].targetPath === null);
+  expect('and it says why, which is what the run prints at the end',
+    plan.placements[0].failureReason === NO_FREE_NAME_IN_THE_DAY_FOLDER);
+  expect('a placement counted without the disk being touched counts it as failed',
+    countPlacements(plan.placements).failed === 1);
+}
+
+function twoFilesAlikeInEveryWayButTheirPath() {
+  // Same moment, same size: neither the clock nor the size settles the order, so the path
+  // does. Without that last step the sort would be free to order them either way round.
+  const shotAt = exif('2026:09:01 10:00:00');
+  const inOneOrder = buildPlan([
+    candidate('/card/b/SAME.JPG', { clock: shotAt }), candidate('/card/a/SAME.JPG', { clock: shotAt }),
+  ], {}, probeOver([]));
+  const inTheOther = buildPlan([
+    candidate('/card/a/SAME.JPG', { clock: shotAt }), candidate('/card/b/SAME.JPG', { clock: shotAt }),
+  ], {}, probeOver([]));
+
+  expect('two files alike in clock and size are ordered by their path, so the plan is settled',
+    inOneOrder.placements.map((entry) => entry.sourcePath).join()
+      === inTheOther.placements.map((entry) => entry.sourcePath).join(),
+    inOneOrder.placements.map((entry) => entry.sourcePath).join());
+  expect('and the one whose path sorts first takes the first numbered subfolder',
+    inOneOrder.placements[0].targetPath === '/card/2026-09-01/01/SAME.JPG', inOneOrder.placements[0].targetPath);
+}
+
+function aCardHoldingNothingThatRecordsItsOwnDate() {
+  // Nothing on the card says when it was shot, so there is no newest shot to measure a
+  // filesystem date against and no reason to distrust one.
+  const nothingDated = [
+    candidate('/card/DCIM/CLIP1.MTS', { fileTimestamp: new Date(2026, 7, 27, 14) }),
+    candidate('/card/DCIM/CLIP2.MTS', { fileTimestamp: new Date(2026, 7, 28, 9) }),
+  ];
+  const plan = buildPlan(nothingDated, {}, probeOver([]));
+
+  expect('with no shot on the card to measure against, a filesystem date is taken as it stands',
+    plan.placements.map((entry) => entry.folderName).join() === '2026-08-27,2026-08-28',
+    plan.placements.map((entry) => entry.folderName).join());
+  expect('and both files are counted as dated by the filesystem',
+    plan.filesystemDateUseCounts.filesDatedByTheFilesystem === 2);
+}
+
+// The report is handed the lines it would print rather than a terminal, so what a run says
+// can be checked without a run.
+const linesPrintedBy = (report, what) => {
+  const printed = [];
+  const complained = [];
+  report(what, { out: (line) => printed.push(line), error: (line) => complained.push(line) });
+  return { printed, complained };
+};
+
+const planOf = (placements, extra = {}) => ({
+  placements,
+  filesystemDateUseCounts: { filesDatedByTheFilesystem: 0, filesLeftUndated: 0 },
+  namesSplitIntoSubfolders: 0,
+  ...extra,
+});
+
+const placedInto = (folderName, placement, sizeInBytes = 1000) => ({
+  sourcePath: `/card/${folderName}.JPG`,
+  targetPath: `/card/${folderName}/x.JPG`,
+  folderName,
+  clock: null,
+  dateSource: null,
+  sizeInBytes,
+  placement,
+  failureReason: null,
+});
+
+function whatTheRunSaysItDidToADuplicate() {
+  const oneDuplicate = {
+    placed: 0, alreadyInPlace: 0, duplicates: 1, failed: 0, emptyDirectoriesRemoved: 0, failures: [],
+  };
+  const wordingWhen = (options) =>
+    linesPrintedBy(reportForATerminal, { plan: planOf([]), outcome: oneDuplicate, options }).printed.join();
+
+  expect('a dry run that would copy says it would skip the duplicate',
+    wordingWhen({ dryRun: true, moveInsteadOfCopying: false }).includes('1 duplicate to skip'));
+  expect('a dry run that would move says it would drop it, the original being deleted',
+    wordingWhen({ dryRun: true, moveInsteadOfCopying: true }).includes('1 duplicate to drop'));
+  expect('a copy that happened says it skipped it',
+    wordingWhen({ dryRun: false, moveInsteadOfCopying: false }).includes('1 duplicate skipped'));
+  expect('a move that happened says it dropped it',
+    wordingWhen({ dryRun: false, moveInsteadOfCopying: true }).includes('1 duplicate dropped'));
+
+  const duplicate = placedInto('2026-08-27', PLACEMENT.duplicateOfAFileAlreadySorted);
+  expect('and --verbose names the file it skipped as it goes',
+    fileAsItIsPlaced(duplicate, false).endsWith('skipped, already at /card/2026-08-27/x.JPG'));
+  expect('or the file it dropped, when it was moving them',
+    fileAsItIsPlaced(duplicate, true).endsWith('dropped, already at /card/2026-08-27/x.JPG'));
+  expect('a file already where it belongs is worth no line at all',
+    fileAsItIsPlaced(placedInto('2026-08-27', PLACEMENT.alreadyInItsDayFolder), false) === null);
+}
+
+function theFolderSummaryReadsOldestDayFirst() {
+  const { printed } = linesPrintedBy(reportForATerminal, {
+    plan: planOf([
+      placedInto('2026-08-29', PLACEMENT.intoItsDayFolder, 2048),
+      placedInto('2026-08-27', PLACEMENT.intoItsDayFolder, 3 * 1024 * 1024),
+      placedInto('2026-08-28', PLACEMENT.intoItsDayFolder, 512),
+    ]),
+    outcome: countPlacements([]),
+    options: { dryRun: true, moveInsteadOfCopying: false, quiet: false, verbose: false },
+  });
+
+  expect('the days are listed oldest first however they were planned',
+    printed.slice(0, 3).map((line) => line.slice(0, '2026-08-27'.length)).join()
+      === '2026-08-27,2026-08-28,2026-08-29', printed.join('\n'));
+  expect('a size under a kilobyte is printed as the bytes it is',
+    printed[1].endsWith('512 B'), printed[1]);
+  expect('and a larger one is stepped up to the unit that suits it',
+    printed[0].endsWith('3.0 MB'), printed[0]);
+  expect('a day holding one file says file rather than files',
+    printed[0].includes('1 file '), printed[0]);
+}
+
+function theJsonSaysEverythingTheTerminalDoes() {
+  const outcome = {
+    placed: 1, alreadyInPlace: 0, duplicates: 0, failed: 1, emptyDirectoriesRemoved: 2,
+    failures: [{ sourcePath: '/card/DCIM/P1.JPG', reason: 'EACCES' }],
+  };
+  const plan = planOf([placedInto('2026-08-27', PLACEMENT.intoItsDayFolder)], {
+    filesystemDateUseCounts: { filesDatedByTheFilesystem: 1, filesLeftUndated: 3 },
+    namesSplitIntoSubfolders: 1,
+  });
+
+  const { printed } = linesPrintedBy(reportAsJson, { plan, outcome, fileCount: 2, options: { dryRun: false } });
+  const said = JSON.parse(printed.join('\n'));
+
+  expect('the json carries the two counts the terminal draws its notes from',
+    said.summary.datedByTheFilesystem === 1 && said.summary.leftUndated === 3);
+  expect('and the names it had to split', said.summary.namesSplitIntoSubfolders === 1);
+  expect('a failure is given both as a sentence and as the path and the reason apart',
+    said.summary.errors[0] === '/card/DCIM/P1.JPG: EACCES'
+    && said.summary.failures[0].reason === 'EACCES');
+  expect('a file with no clock is reported as having no stamp rather than a made up one',
+    said.actions[0].stamp === null);
+
+  const quietly = { dryRun: false, moveInsteadOfCopying: false, quiet: true, verbose: false };
+  const { printed: nothing, complained } = linesPrintedBy(reportForATerminal, { plan, outcome, options: quietly });
+
+  expect('--quiet prints no summary at all', nothing.length === 0, nothing.join('\n'));
+  expect('but it still says what failed, and why, on standard error',
+    complained.some((line) => line.endsWith('/card/DCIM/P1.JPG: EACCES')), complained.join('\n'));
+  expect('and still explains the files it left undated',
+    complained.some((line) => line.includes('looks like the moment of a copy')), complained.join('\n'));
+  expect('and the one name it had to split into a numbered subfolder',
+    complained.some((line) => line.includes('1 file name is used by more than one photo')), complained.join('\n'));
+}
+
 function theCommandLineIsReadWithoutStartingAProcess() {
   expect('clustered short options are each applied',
     decideWhatToDo(['-nvm', '/card']).options.dryRun === true
@@ -249,6 +607,11 @@ function theCommandLineIsReadWithoutStartingAProcess() {
 }
 
 aParserReadsBytesWithNoFileUnderThem();
+aFileThatStopsHalfWayIsReadAsLessThanTheWhole();
+aFileGoneBadIsReadWithoutTheReaderGivingUp();
+theShapesAWalkMustNotBeLedRoundForeverBy();
+theFilesCarryingMoreThanAWalkLooksThrough();
+theClipsOffATapeCamcorder();
 theMarkOnAFileIsTheLastWordOnIt();
 clocksCompareAsATotalOrder();
 theDayAFileIsFiledUnder();
@@ -259,6 +622,15 @@ aFileAlreadyWhereItBelongs();
 aFileThatRecordsNoDate();
 aRawTakesTheDateOfItsJpeg();
 theSameFilesAlwaysGiveTheSamePlan();
+everyReaderRefusesAFileThatIsNotItsFormat();
+theByteReadersHandBackNothingRatherThanGuessing();
+aClockIsBuiltOnlyFromFieldsThatWereThere();
+aDayFolderWithNoFreeNameLeft();
+twoFilesAlikeInEveryWayButTheirPath();
+aCardHoldingNothingThatRecordsItsOwnDate();
+whatTheRunSaysItDidToADuplicate();
+theFolderSummaryReadsOldestDayFirst();
+theJsonSaysEverythingTheTerminalDoes();
 theCommandLineIsReadWithoutStartingAProcess();
 
 console.log(failedCheckCount === 0 ? '\n  all unit checks passed\n' : `\n  ${failedCheckCount} failed\n`);

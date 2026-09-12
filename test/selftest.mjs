@@ -19,7 +19,9 @@ import {
 } from './fixtures.mjs';
 import { readCameraClockFromFile } from '../src/formats/registry.mjs';
 import { formatCameraClock } from '../src/clock.mjs';
-import { PLACEMENT, UNDATED_FOLDER_NAME } from '../src/plan.mjs';
+import { NO_FREE_NAME_IN_THE_DAY_FOLDER, PLACEMENT, UNDATED_FOLDER_NAME } from '../src/plan.mjs';
+import { applyPlan } from '../src/apply.mjs';
+import { destinationProbeOverTheFilesystem } from '../src/destination.mjs';
 import { FILESYSTEM_DATE_USE } from '../src/dating.mjs';
 import { DATE_SOURCE } from '../src/dateSource.mjs';
 
@@ -935,6 +937,356 @@ function theCommandLineItself() {
     missingFolder.standardError);
 }
 
+// Every way carrying out a plan can go wrong, which is the half of the program a real disk
+// will not perform on demand: a rename that crosses a disk boundary, a copy that comes up
+// short, a target that appeared between the plan and the move. The filesystem is handed in
+// wrapped, so the failure is exactly the one being asked about and everything else is the
+// real thing happening in a real directory.
+const aFilesystemThat = (whatItDoesDifferently) => ({ ...fs, ...whatItDoesDifferently });
+const throwing = (code) => () => {
+  throw Object.assign(new Error(`pretend ${code}`), { code });
+};
+
+function anEntryFor(sourcePath, targetPath, placement) {
+  return {
+    sourcePath,
+    targetPath,
+    folderName: '2026-08-27',
+    clock: null,
+    dateSource: null,
+    sizeInBytes: fs.existsSync(sourcePath) ? fs.statSync(sourcePath).size : 0,
+    fileTimestamp: new Date(2026, 7, 27, 9, 7, 1),
+    placement,
+    failureReason: placement === PLACEMENT.couldNotBePlaced ? NO_FREE_NAME_IN_THE_DAY_FOLDER : null,
+  };
+}
+
+function aDirectoryHolding(name, files) {
+  const directory = fs.mkdtempSync(path.join(temporaryDirectory, `${name}-`));
+  for (const [relativePath, contents] of Object.entries(files)) {
+    writeFixtureFile(path.join(directory, relativePath), contents);
+  }
+  return directory;
+}
+
+function aMoveOntoAnotherDisk() {
+  const photo = jpegFile('2026:08:27 09:07:01');
+  const disk = aDirectoryHolding('another-disk', { 'DCIM/P1.JPG': photo });
+  const source = path.join(disk, 'DCIM', 'P1.JPG');
+  const target = path.join(disk, '2026-08-27', 'P1.JPG');
+
+  // rename is what fails when the destination is on another disk, and the only thing that
+  // does: the copy and the delete that stand in for it are the real ones.
+  const outcome = applyPlan([anEntryFor(source, target, PLACEMENT.intoItsDayFolder)], {
+    moveInsteadOfCopying: true,
+    filesystem: aFilesystemThat({ renameSync: throwing('EXDEV') }),
+  });
+
+  expect('a move onto another disk is carried out as a copy and a delete',
+    outcome.placed === 1 && outcome.failed === 0, JSON.stringify(outcome));
+  expect('and the photo arrives whole',
+    fs.existsSync(target) && fs.readFileSync(target).equals(photo));
+  expect('and the original is gone, which is what makes it a move',
+    !fs.existsSync(source));
+  expect('and the file keeps the time it was shot rather than the time it was copied',
+    Math.abs(fs.statSync(target).mtime.getTime() - new Date(2026, 7, 27, 9, 7, 1).getTime()) < 1000,
+    String(fs.statSync(target).mtime));
+}
+
+function aCopyOntoAnotherDiskThatCameUpShort() {
+  const photo = jpegFile('2026:08:27 09:07:01');
+  const disk = aDirectoryHolding('short-copy', { 'DCIM/P1.JPG': photo });
+  const source = path.join(disk, 'DCIM', 'P1.JPG');
+  const target = path.join(disk, '2026-08-27', 'P1.JPG');
+
+  // The copy lands, but the card is pulled before it is whole: the file at the far end is
+  // shorter than the one it came from, and the original must survive that.
+  const outcome = applyPlan([anEntryFor(source, target, PLACEMENT.intoItsDayFolder)], {
+    moveInsteadOfCopying: true,
+    filesystem: aFilesystemThat({
+      renameSync: throwing('EXDEV'),
+      statSync: (askedAbout, ...rest) => (askedAbout === target
+        ? { size: fs.statSync(askedAbout, ...rest).size - 1 }
+        : fs.statSync(askedAbout, ...rest)),
+    }),
+  });
+
+  expect('a copy that came up short is counted as a failure rather than as a move',
+    outcome.placed === 0 && outcome.failed === 1, JSON.stringify(outcome));
+  expect('and it says what went wrong in words, there being no error code to give',
+    outcome.failures[0].reason === 'copy was incomplete, original left untouched',
+    outcome.failures[0].reason);
+  expect('the half written copy is taken away rather than left to look like the photo',
+    !fs.existsSync(target));
+  expect('and the original is still on the card',
+    fs.existsSync(source) && fs.readFileSync(source).equals(photo));
+}
+
+function aTargetThatAppearedAfterThePlanWasMade() {
+  const disk = aDirectoryHolding('target-appeared', {
+    'DCIM/P1.JPG': jpegFile('2026:08:27 09:07:01'),
+    '2026-08-27/P1.JPG': jpegFile('2026:08:27 18:00:00'),
+  });
+  const source = path.join(disk, 'DCIM', 'P1.JPG');
+  const target = path.join(disk, '2026-08-27', 'P1.JPG');
+  const somethingElseThere = fs.readFileSync(target);
+
+  const outcome = applyPlan([anEntryFor(source, target, PLACEMENT.intoItsDayFolder)], { moveInsteadOfCopying: true });
+
+  expect('a move onto a name that filled up after the plan was made is refused',
+    outcome.failed === 1 && outcome.failures[0].reason === 'EEXIST', JSON.stringify(outcome));
+  expect('and neither the photo that was there nor the one being moved is lost',
+    fs.readFileSync(target).equals(somethingElseThere) && fs.existsSync(source));
+}
+
+function aRenameThatFailedForSomeOtherReason() {
+  const disk = aDirectoryHolding('rename-refused', { 'DCIM/P1.JPG': jpegFile('2026:08:27 09:07:01') });
+  const source = path.join(disk, 'DCIM', 'P1.JPG');
+
+  const outcome = applyPlan(
+    [anEntryFor(source, path.join(disk, '2026-08-27', 'P1.JPG'), PLACEMENT.intoItsDayFolder)],
+    { moveInsteadOfCopying: true, filesystem: aFilesystemThat({ renameSync: throwing('EACCES') }) },
+  );
+
+  expect('a rename refused for any reason but a disk boundary is reported, not copied around',
+    outcome.failed === 1 && outcome.failures[0].reason === 'EACCES', JSON.stringify(outcome));
+  expect('and the original is left where it was',
+    fs.existsSync(source));
+}
+
+function whatIsCountedWithoutAnythingBeingWritten() {
+  const disk = aDirectoryHolding('counted', {
+    'DCIM/P1.JPG': jpegFile('2026:08:27 09:07:01'),
+    'DCIM/P2.JPG': jpegFile('2026:08:27 10:00:00'),
+    '2026-08-27/P3.JPG': jpegFile('2026:08:27 11:00:00'),
+  });
+  const named = [];
+  const outcome = applyPlan([
+    anEntryFor(path.join(disk, 'DCIM', 'P1.JPG'), null, PLACEMENT.couldNotBePlaced),
+    anEntryFor(path.join(disk, '2026-08-27', 'P3.JPG'), path.join(disk, '2026-08-27', 'P3.JPG'),
+      PLACEMENT.alreadyInItsDayFolder),
+    anEntryFor(path.join(disk, 'DCIM', 'P2.JPG'), path.join(disk, '2026-08-27', 'P2.JPG'),
+      PLACEMENT.duplicateOfAFileAlreadySorted),
+  ], { moveInsteadOfCopying: true, onFilePlaced: (entry) => named.push(path.basename(entry.sourcePath)) });
+
+  expect('a photo the plan found nowhere for is counted as failed, with the reason the plan gave',
+    outcome.failed === 1 && outcome.failures[0].reason === NO_FREE_NAME_IN_THE_DAY_FOLDER,
+    JSON.stringify(outcome.failures));
+  expect('a photo already in its day folder is counted as being in place',
+    outcome.alreadyInPlace === 1);
+  expect('and --verbose names it, nothing having been written for it',
+    named.includes('P3.JPG'), named.join());
+  expect('a duplicate is dropped from the card when files are being moved',
+    outcome.duplicates === 1 && !fs.existsSync(path.join(disk, 'DCIM', 'P2.JPG')));
+  expect('and the photo it duplicates is left alone',
+    fs.existsSync(path.join(disk, '2026-08-27', 'P3.JPG')));
+  expect('a photo the plan found nowhere for is not named as placed',
+    !named.includes('P1.JPG'), named.join());
+}
+
+function tidyingUpFoldersItCannotRead() {
+  const disk = aDirectoryHolding('tidying', { 'DCIM/100/P1.JPG': jpegFile('2026:08:27 09:07:01') });
+  fs.unlinkSync(path.join(disk, 'DCIM', '100', 'P1.JPG'));
+
+  const cannotBeRead = applyPlan([], {
+    moveInsteadOfCopying: true,
+    directoriesToTidy: [disk],
+    filesystem: aFilesystemThat({ readdirSync: throwing('EACCES') }),
+  });
+  expect('a folder that cannot be read is left alone rather than bringing the run down',
+    cannotBeRead.emptyDirectoriesRemoved === 0);
+
+  const cannotBeRemoved = applyPlan([], {
+    moveInsteadOfCopying: true,
+    directoriesToTidy: [disk],
+    filesystem: aFilesystemThat({ rmdirSync: throwing('ENOTEMPTY') }),
+  });
+  expect('nor does a folder that will not be removed',
+    cannotBeRemoved.emptyDirectoriesRemoved === 0 && fs.existsSync(path.join(disk, 'DCIM', '100')));
+
+  const tidied = applyPlan([], { moveInsteadOfCopying: true, directoriesToTidy: [disk] });
+  expect('and the folders the card emptied out are taken away once they can be',
+    tidied.emptyDirectoriesRemoved === 2 && !fs.existsSync(path.join(disk, 'DCIM')), JSON.stringify(tidied));
+  expect('while the folder the user named is kept, empty or not',
+    fs.existsSync(disk));
+
+  expect('a copy run tidies nothing, every original still being where it was',
+    applyPlan([], { moveInsteadOfCopying: false, directoriesToTidy: [disk] }).emptyDirectoriesRemoved === 0);
+}
+
+// Permissions are the one thing a Windows runner will not honour: chmod there leaves a
+// folder readable and writable, so the checks that turn on being refused say so rather
+// than failing for a reason that is not the program's.
+const THE_FILESYSTEM_HONOURS_PERMISSIONS = process.platform !== 'win32';
+
+function namingOneFileRatherThanAFolder() {
+  const disk = aDirectoryHolding('one-file', {
+    'DCIM/P1.JPG': jpegFile('2026:08:27 09:07:01'),
+    'DCIM/notes.txt': Buffer.from('not a photo'),
+  });
+  const onePhoto = path.join(disk, 'DCIM', 'P1.JPG');
+
+  const sorted = runCommand([onePhoto]);
+  expect('a single photo may be named instead of a folder',
+    sorted.exitCode === EXIT_EVERYTHING_PLACED, sorted.standardOutput + sorted.standardError);
+  expect('and its day folder is made beside it rather than under it',
+    fs.existsSync(path.join(disk, 'DCIM', '2026-08-27', 'P1.JPG')),
+    filesUnder(disk).join('\n'));
+
+  const notAPhoto = runCommand([path.join(disk, 'DCIM', 'notes.txt')]);
+  expect('a named file that is no kind of photo or video is nothing to sort',
+    notAPhoto.exitCode === EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND
+    && /no photos or video found/.test(notAPhoto.standardError), notAPhoto.standardError);
+
+  const missing = runCommand([path.join(disk, 'DCIM', 'NOT-THERE.JPG')]);
+  expect('a folder or file that is not there is reported with its path and its reason',
+    missing.exitCode === EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND
+    && missing.standardError.includes('NOT-THERE.JPG') && /ENOENT/.test(missing.standardError),
+    missing.standardError);
+}
+
+function aFolderTheWalkIsNotAllowedInto() {
+  if (!THE_FILESYSTEM_HONOURS_PERMISSIONS) {
+    expect('skipped: this filesystem does not refuse a folder to its owner', true);
+    return;
+  }
+  const disk = aDirectoryHolding('unreadable-subfolder', {
+    'DCIM/100/P1.JPG': jpegFile('2026:08:27 09:07:01'),
+    'DCIM/101/P2.JPG': jpegFile('2026:08:28 09:07:01'),
+  });
+  const shut = path.join(disk, 'DCIM', '101');
+  fs.chmodSync(shut, 0o000);
+
+  const sorted = runCommand(['-n', disk]);
+  expect('a folder the walk is not allowed into is stepped over rather than bringing the run down',
+    sorted.exitCode === EXIT_EVERYTHING_PLACED && /2026-08-27/.test(sorted.standardOutput)
+    && !/2026-08-28/.test(sorted.standardOutput), sorted.standardOutput + sorted.standardError);
+
+  fs.chmodSync(shut, 0o700);
+}
+
+function askingTheDiskWhetherTwoFilesAreTheSamePhoto() {
+  const photo = jpegFile('2026:08:27 09:07:01');
+  const disk = aDirectoryHolding('same-photo', {
+    'a/P1.JPG': photo,
+    'b/P1.JPG': photo,
+    'c/P1.JPG': jpegFile('2026:08:27 18:00:00'),
+    'short/P1.JPG': photo.subarray(0, photo.length - 1),
+  });
+  const at = (relativePath) => path.join(disk, relativePath);
+  const probe = destinationProbeOverTheFilesystem();
+
+  expect('a path with nothing at it is not there', !probe.exists(at('a/NOTHING.JPG')));
+  expect('and one with a file at it is', probe.exists(at('a/P1.JPG')));
+
+  expect('two files of the same bytes are the same photo',
+    probe.contentsMatch(at('a/P1.JPG'), at('b/P1.JPG'), photo.length));
+  expect('and the answer does not depend on which of the two is asked about first',
+    probe.contentsMatch(at('b/P1.JPG'), at('a/P1.JPG'), photo.length));
+  expect('two files of the same length but different bytes are not',
+    !probe.contentsMatch(at('a/P1.JPG'), at('c/P1.JPG'), photo.length));
+  expect('nor are two of different lengths',
+    !probe.contentsMatch(at('a/P1.JPG'), at('short/P1.JPG'), photo.length));
+  expect('and a file that is not there is no photo to match',
+    !probe.contentsMatch(at('a/P1.JPG'), at('a/NOTHING.JPG'), photo.length));
+}
+
+// A raw file is tens of megabytes and is compared a megabyte at a time, so the loop that
+// walks it in chunks only ever runs once on anything a fixture is small enough to be.
+// These two are built large enough to make it go round more than once.
+const BYTES_COMPARED_PER_READ = 1024 * 1024;
+
+function comparingTwoFilesLargerThanOneRead() {
+  const disk = fs.mkdtempSync(path.join(temporaryDirectory, 'chunked-'));
+  const longer = path.join(disk, 'longer.JPG');
+  const shorter = path.join(disk, 'shorter.JPG');
+  const stopsPartWay = path.join(disk, 'stops-part-way.JPG');
+
+  const firstMegabyte = Buffer.alloc(BYTES_COMPARED_PER_READ, 0x41);
+  fs.writeFileSync(longer, Buffer.concat([firstMegabyte, Buffer.alloc(BYTES_COMPARED_PER_READ, 0x42)]));
+  fs.writeFileSync(shorter, Buffer.concat([firstMegabyte, Buffer.alloc(BYTES_COMPARED_PER_READ / 2, 0x42)]));
+  fs.writeFileSync(stopsPartWay, firstMegabyte);
+
+  const probe = destinationProbeOverTheFilesystem();
+  const sizeOfTheShorter = fs.statSync(shorter).size;
+
+  expect('a file that runs out part way through the one it is compared against is not the same photo',
+    !probe.contentsMatch(longer, shorter, sizeOfTheShorter));
+  expect('nor is one that stops before the comparison has read as far as it was told to',
+    !probe.contentsMatch(stopsPartWay, longer, fs.statSync(longer).size));
+  expect('and two files longer than a single read that do match are still found to match',
+    probe.contentsMatch(longer, longer, fs.statSync(longer).size));
+}
+
+function aFileThatCannotBeOpenedAtAll() {
+  expect('a file that is not there is read as no date rather than throwing',
+    readCameraClockFromFile(path.join(temporaryDirectory, 'not-there-at-all.JPG'), 1000) === null);
+}
+
+function aCardWithNothingOnItAndAMachineReadingTheAnswer() {
+  const empty = fs.mkdtempSync(path.join(temporaryDirectory, 'empty-card-'));
+  const asJson = runCommand(['--json', empty]);
+
+  expect('an empty card still answers in json when json was asked for',
+    asJson.exitCode === EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND, asJson.standardOutput + asJson.standardError);
+  const said = JSON.parse(asJson.standardOutput);
+  expect('and the answer says plainly that it found nothing',
+    said.summary.found === 0 && said.actions.length === 0, asJson.standardOutput);
+  expect('rather than printing a sentence a script would have to read',
+    asJson.standardError === '', asJson.standardError);
+}
+
+function installedWithoutItsManifest() {
+  // npm always installs the manifest; a copy made by hand may not. Asked its version then,
+  // it has nowhere to read one from and has to say so rather than fall over.
+  const installation = fs.mkdtempSync(path.join(temporaryDirectory, 'no-manifest-'));
+  const projectRoot = path.join(testDirectory, '..');
+  for (const directory of ['bin', 'cli', 'src']) {
+    fs.cpSync(path.join(projectRoot, directory), path.join(installation, directory), { recursive: true });
+  }
+
+  const asked = spawnSync('node', [path.join(installation, 'bin', 'shotsort.mjs'), '--version'], { encoding: 'utf8' });
+  expect('a copy installed without its manifest says its version is unknown rather than failing',
+    asked.status === EXIT_EVERYTHING_PLACED && asked.stdout.trim() === 'unknown',
+    `${asked.status}: ${asked.stdout}${asked.stderr}`);
+
+  const withTheManifest = runCommand(['--version']);
+  expect('and a proper installation says the version the manifest gives',
+    withTheManifest.stdout === undefined || /^\d+\.\d+\.\d+$/.test(withTheManifest.standardOutput.trim()),
+    withTheManifest.standardOutput);
+}
+
+// A pipe holds a limited amount before a write to it blocks, so this has to be a listing
+// too long to fit in one: a shorter one lands in the pipe whole and the reader going away
+// is never noticed.
+const FILES_ENOUGH_TO_FILL_A_PIPE = 700;
+
+function outputCutOffBySomethingReadingIt() {
+  // `shotsort --json card | head -1` closes the pipe the moment it has its line. Writing to
+  // a pipe nobody is reading is an error, and one the run must take as its cue to stop
+  // rather than as a fault to report.
+  if (process.platform === 'win32') {
+    expect('skipped: this shell does not pipe the way the check needs', true);
+    return;
+  }
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'cut-off-'));
+  for (let fileNumber = 0; fileNumber < FILES_ENOUGH_TO_FILL_A_PIPE; fileNumber++) {
+    writeFixtureFile(path.join(dump, `P${String(fileNumber).padStart(7, '0')}.JPG`),
+      jpegFile('2026:08:27 09:07:01'));
+  }
+
+  // pipefail so the answer is the program's own rather than the exit status of whatever
+  // was reading it.
+  const pipeline = spawnSync('bash', ['-c',
+    `set -o pipefail; node ${JSON.stringify(COMMAND)} --json -n ${JSON.stringify(dump)} | head -1`],
+  { encoding: 'utf8' });
+
+  expect('output cut off by something reading only the start of it is not an error',
+    pipeline.status === EXIT_EVERYTHING_PLACED, `status ${pipeline.status}, signal ${pipeline.signal}: ${pipeline.stderr}`);
+  expect('and nothing is said about the broken pipe',
+    !/EPIPE/.test(pipeline.stderr ?? ''), pipeline.stderr);
+}
+
 function everyEnumMemberTheCodeRefersToExists() {
   const enumsByName = { PLACEMENT, FILESYSTEM_DATE_USE, DATE_SOURCE };
   const projectRoot = path.join(testDirectory, '..');
@@ -1098,6 +1450,20 @@ theEdgeOfTrustingTheFilesystem();
 recognisingAFolderItAlreadySortedInto();
 theCountsInTheNotes();
 theCommandLineItself();
+aMoveOntoAnotherDisk();
+aCopyOntoAnotherDiskThatCameUpShort();
+aTargetThatAppearedAfterThePlanWasMade();
+aRenameThatFailedForSomeOtherReason();
+whatIsCountedWithoutAnythingBeingWritten();
+tidyingUpFoldersItCannotRead();
+namingOneFileRatherThanAFolder();
+aFolderTheWalkIsNotAllowedInto();
+askingTheDiskWhetherTwoFilesAreTheSamePhoto();
+comparingTwoFilesLargerThanOneRead();
+aFileThatCannotBeOpenedAtAll();
+aCardWithNothingOnItAndAMachineReadingTheAnswer();
+installedWithoutItsManifest();
+outputCutOffBySomethingReadingIt();
 
 fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 console.log(failedCheckCount === 0 ? '\n  all checks passed\n' : `\n  ${failedCheckCount} failed\n`);
