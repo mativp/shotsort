@@ -107,9 +107,9 @@ jobs:
       url: https://www.npmjs.com/package/shotsort
     permissions:
       contents: read
-      # Lets npm mint a provenance attestation tying the tarball on the registry back to
-      # this workflow run and this commit. Public repository, so the attestation is public
-      # too, and the package page shows where it was built.
+      # The whole credential. npm is registered to trust this repository publishing from
+      # this workflow under this environment, so it takes a short-lived token GitHub mints
+      # for the run instead of a secret, and signs the provenance attestation with it.
       id-token: write
     steps:
       - uses: actions/checkout@v7
@@ -122,5 +122,3 @@ jobs:
       # prepublishOnly runs the lint and the test suite once more here, immediately before
       # the tarball is uploaded, so this step is the last gate as well as the publish.
       - run: npm publish --provenance --tag "${{ needs.version.outputs.dist-tag }}"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
