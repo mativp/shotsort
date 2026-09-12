@@ -28,7 +28,7 @@ Or run it without installing anything:
 npx shotsort ~/Import
 ```
 
-Node 18 or newer. Then `shotsort --help`, or `man shotsort` for the full
+Node 22 or newer. Then `shotsort --help`, or `man shotsort` for the full
 manual.
 
 From a clone instead:

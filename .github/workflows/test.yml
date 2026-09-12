@@ -14,8 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest Node the manifest claims to support, the current LTS, and the latest.
-        node-version: ['18', '20', '22', '24']
+        # The oldest Node the manifest claims to support, the LTS most people are on,
+        # and the one that becomes LTS next -- so a release that breaks on it is found
+        # before anyone upgrades into the breakage.
+        node-version: ['22', '24', '26']
         os: [ubuntu-latest]
         include:
           # The files it sorts come off cameras onto macOS and Windows as often as Linux,
@@ -35,7 +37,8 @@ jobs:
   coverage:
     # The floors the badges in the README state. They are a floor, not a target: a change
     # that adds a branch nothing checks fails here rather than quietly lowering the number.
-    # Pinned to one Node because the threshold flags only exist from Node 22.
+    # Pinned to the oldest Node the manifest supports, which is where the coverage
+    # threshold flags first exist anyway.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
