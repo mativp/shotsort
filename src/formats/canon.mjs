@@ -11,7 +11,10 @@ import { cameraClockFromSecondsSince1970, onlyIfPlausible } from '../clock.mjs';
 const CANON_METADATA_UUID = '85c0b687820f11e08111f4ce462b6a48';
 const CANON_EXIF_BOX_TYPES_IN_PREFERENCE_ORDER = ['CMT2', 'CMT1'];
 
-const CANON_CIFF_MARK = 'HEAPCCDR';
+// CIFF names its own flavour after the mark: HEAPCCDR for the raw, HEAPJPGM for the
+// thumbnail written beside it. Both keep the capture time in the same place.
+const CANON_CIFF_MARKS = ['HEAPCCDR', 'HEAPJPGM'];
+const BYTES_IN_A_CIFF_MARK = 8;
 const BYTES_FROM_FILE_START_TO_THE_CIFF_HEAP = 2;
 const BYTES_FROM_FILE_START_TO_THE_CIFF_MARK = 6;
 const CIFF_TAG_CAPTURE_TIME = 0x180e;
@@ -43,7 +46,7 @@ export function readCameraClockFromCanonRaw(byteSource) {
 }
 
 export const startsWithACanonCiffMark = (byteSource) =>
-  readTextAt(byteSource, BYTES_FROM_FILE_START_TO_THE_CIFF_MARK, CANON_CIFF_MARK.length) === CANON_CIFF_MARK;
+  CANON_CIFF_MARKS.includes(readTextAt(byteSource, BYTES_FROM_FILE_START_TO_THE_CIFF_MARK, BYTES_IN_A_CIFF_MARK));
 
 function findCaptureTimeInCiffHeap(byteSource, heapStart, heapEnd, isLittleEndian, howDeep) {
   if (howDeep > DEEPEST_A_REAL_CIFF_DIRECTORY_NESTS) return null;

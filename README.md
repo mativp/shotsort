@@ -103,9 +103,10 @@ drop `-d` and the day folders appear inside the source folder instead.
 ### Files that record no date
 
 Stills and video are both filed by the clock the camera was set to, so nothing
-here applies to them. AVCHD clips (`.MTS`, `.M2TS`) and HLG photos (`.HSP`) are
-the exception: no date this reads is stored inside them, leaving only the date
-the filesystem keeps. Read [What it reads](#what-it-reads) for why that date is
+here applies to them. AVCHD clips (`.MTS`, `.M2TS`, `.M2T`), MPEG program
+streams (`.MPG`, `.VOB`, `.M2V`) and HLG photos (`.HSP`) are the exception:
+no date this reads — or exiftool reads — is stored inside them, leaving only
+the date the filesystem keeps. Read [What it reads](#what-it-reads) for why that date is
 sometimes worthless and how `shotsort` tells the difference.
 
 | | |
@@ -168,36 +169,49 @@ duplicate rather than a clash, so they collapse into one file.
 
 ## What it reads
 
-Stills: JPEG, MPO, TIFF, HSP, HIF, HEIC, AVIF, and Canon THM sidecars.
+Stills: JPEG, JPE, JPS, MPO, INSP, TIFF, BTF, PNG, APNG, WEBP, JXL, HSP, HIF,
+HEIC, HEIF, AVIF, and Canon THM sidecars.
 Raw: RW2, RAW, RWL (Panasonic), CR2, CR3, CRM, CRW (Canon), NEF, NRW (Nikon),
-ARW, ARQ, SR2, SRF (Sony), ORF (Olympus, OM System), RAF (Fujifilm), PEF
-(Pentax), MRW (Minolta), X3F (Sigma), SRW, ERF, 3FR, IIQ, MOS, MEF, DCR, KDC,
-and DNG from anyone.
-Video: MP4, MOV, M4V, 3GP, MTS, M2TS, AVI, and the LRV, INSV and 360 clips
-action cameras and drones write.
+ARW, ARQ, SR2, SRF (Sony), ORF, ORI (Olympus, OM System), RAF (Fujifilm), PEF
+(Pentax), MRW (Minolta), X3F (Sigma), SRW, ERF, 3FR, FFF, IIQ, MOS, MEF, DCR,
+KDC, K25, GPR, JXR, HDP, WDP, and DNG from anyone.
+Video: MP4, MOV, QT, M4V, MQV, 3GP, 3GPP, 3G2, 3GP2, MTS, M2TS, M2T, AVI, MKV,
+WEBM, WMV, ASF, DIVX, MPG, MPEG, M2V, VOB, DV, F4V, R3D, and the LRV, LRF, GLV,
+INSV and 360 clips action cameras and drones write.
 
 The extension decides only which files are picked up; which parser runs is
 decided by the file's leading bytes, so a mislabelled file still reads
 correctly.
 
-Most of those raws are a TIFF container and one parser reads them all — Olympus
-and Panasonic simply stamp a different signature in the header, and BigTIFF
-widens every count and offset from four bytes to eight. Four more wrap a TIFF
-block somewhere else and hand it to that same parser: Canon CR3 and CRM bury
-one in `moov/uuid/CMT2`, HEIF and AVIF store one as an item the `meta` box
-points at, Fujifilm RAF gives the offset of a complete JPEG in bytes 84–87 of
-its header, and Minolta MRW wraps one in a `\0TTW` block.
+Most of those raws are a TIFF container and one parser reads them all. The
+number after the byte order mark is not checked against a list of makers: every
+maker who dressed a raw up as a TIFF chose their own, so a list of the ones
+known today is a list that leaves tomorrow's raw undated. BigTIFF widens every
+count and offset from four bytes to eight, and a pointer inside one is read at
+the width its own type declares rather than at the file's offset width.
 
-Two predate all of that and keep a plain Unix timestamp instead: Canon CRW
-holds one in the CIFF heap its trailing pointer leads to, and Sigma X3F as a
-`TIME` property in a UTF-16 property list. Both are read as the camera's own
-clock and both are checked for a plausible year, so a misread yields no date
-rather than a wrong one.
+Six formats wrap a TIFF block somewhere else and hand it to that same parser:
+Canon CR3 and CRM bury one in `moov/uuid/CMT2`, HEIF and AVIF store one as an
+item the `meta` box points at, JPEG XL puts one in a top-level `Exif` box, PNG
+in an `eXIf` chunk, WebP in an `EXIF` chunk, Fujifilm RAF gives the offset of a
+complete JPEG in bytes 84–87 of its header, and Minolta MRW wraps one in a
+`\0TTW` block.
 
-**Not read yet:** AVCHD clips (`.MTS`, `.M2TS`) and HLG photos (`.HSP`). Also
-unread, and unlikely to change: the cinema containers `.MXF`, `.BRAW` and
-`.R3D`, and Matroska `.MKV`, whose only standard date is UTC with no local
-clock to recover.
+The rest keep a date of their own making. Canon CRW holds a Unix timestamp in
+the CIFF heap its trailing pointer leads to and Sigma X3F keeps one as a `TIME`
+property in a UTF-16 property list; AVI writes the recording date out in words
+in an `IDIT` chunk; Matroska counts nanoseconds from 2001 and ASF counts
+ten-millionths of a second from 1601; DV writes the date and time as
+binary-coded decimal in the auxiliary packs of its first blocks; and Redcode
+keeps one run of digits in a numbered record. Every one of them is read as the
+camera's own clock and checked for a plausible year, so a misread yields no
+date rather than a wrong one.
+
+**Not read:** AVCHD clips (`.MTS`, `.M2TS`, `.M2T`), MPEG program streams
+(`.MPG`, `.VOB`, `.M2V`) and HLG photos (`.HSP`) store no date this or exiftool
+can read, so they are placed from a sibling or the filesystem. `.TS` is not
+picked up at all, despite being the same transport stream as `.MTS`: it holds
+no date either way, and a folder of TypeScript is the likelier meaning.
 
 The date comes from the first of these that answers:
 
@@ -268,3 +282,13 @@ either side of midnight, AVCHD outside DCIM, a name collision between card
 folders — runs the real command against it, and checks where every file lands.
 It also checks that `--help`, the man page and this README agree on every
 option, and that the modules which decide things never import `node:fs`.
+
+`test/oracle.mjs` builds every format fixture and puts it to `exiftool`, which
+is the reference implementation for all of these formats, and fails when the two
+read a different date out of the same bytes. This is the only file in the
+repository that knows exiftool exists — shotsort never runs it — and the check
+skips itself when exiftool is not installed. It is here because a parser and the
+fixture that exercises it can share one misunderstanding of a format and agree
+with each other forever; exiftool was written from real files, so putting the
+fixture to it stops that. Three fixtures are recorded as reading differently on
+purpose, each with the reason.

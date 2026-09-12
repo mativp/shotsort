@@ -151,7 +151,7 @@ with no arguments at all therefore prints the usage text and exits
 .BR 2 .
 .SH FILE TYPES
 Stills:
-.BR JPG ", " JPEG ", " MPO ", " HSP ", " HIF ", " HEIC ", " AVIF ", " THM .
+.BR JPG ", " JPEG ", " JPE ", " JPS ", " MPO ", " INSP ", " PNG ", " APNG ", " WEBP ", " JXL ", " HSP ", " HIF ", " HEIC ", " HEIF ", " AVIF ", " THM .
 .PP
 Raw, by the maker that writes it:
 .RS
@@ -176,59 +176,78 @@ Minolta, Sigma
 .BR MRW ", " X3F
 .TP
 Olympus, OM System
-.B ORF
+.BR ORF ", " ORI
 .TP
 Pentax, Ricoh
 .B PEF
 .TP
 Others
-.BR SRW ", " ERF ", " 3FR ", " IIQ ", " MOS ", " MEF ", " DCR ", " KDC
+.BR SRW ", " ERF ", " 3FR ", " FFF ", " IIQ ", " MOS ", " MEF ", " DCR ", " KDC ", " K25 ", " GPR ", " JXR ", " HDP ", " WDP
 .TP
 Anyone
-.BR DNG ", " TIF ", " TIFF
+.BR DNG ", " TIF ", " TIFF ", " BTF
 .PD
 .RE
 .PP
 Video:
-.BR MP4 ", " MOV ", " M4V ", " 3GP ", " MTS ", " M2TS ", " AVI ", " LRV ", " INSV ", " 360 ,
+.BR MP4 ", " MOV ", " QT ", " M4V ", " MQV ", " 3GP ", " 3GPP ", " 3G2 ", " 3GP2 ", " MTS ", " M2TS ", " M2T ", " AVI ", " MKV ", " WEBM ", " WMV ", " ASF ", " DIVX ", " MPG ", " MPEG ", " M2V ", " VOB ", " DV ", " F4V ", " R3D ", " LRV ", " LRF ", " GLV ", " INSV ", " 360 ,
 including 4K and 6K PHOTO clips and the proxies action cameras and drones
 write alongside them.
 .PP
 The extension decides only which files are picked up; which parser runs is
 decided by the file's leading bytes, so a mislabelled file still reads
 correctly. Most of those raws are a TIFF container and one parser reads them
-all; Olympus and Panasonic simply stamp a different signature in the header,
-and BigTIFF widens every count and offset from four bytes to eight. Four more
-wrap a TIFF block somewhere else and hand it to that same parser: Canon CR3
-and CRM
-bury one in
+all. The number after the byte order mark is not checked against a list of
+makers: every maker who dressed a raw up as a TIFF chose their own, so a list of
+the ones known today is a list that leaves tomorrow's raw undated. BigTIFF
+widens every count and offset from four bytes to eight, and a pointer inside one
+is read at the width its own type declares rather than at the file's offset
+width.
+.PP
+Six more wrap a TIFF block somewhere else and hand it to that same parser:
+Canon CR3 and CRM bury one in
 .IR moov/uuid/CMT2 ,
 HEIF and AVIF store one as an item the
 .I meta
-box points at, Fujifilm RAF gives the offset of a complete JPEG in bytes
+box points at, JPEG XL puts one in a top\-level
+.B Exif
+box, PNG in an
+.B eXIf
+chunk and WebP in an
+.B EXIF
+chunk, Fujifilm RAF gives the offset of a complete JPEG in bytes
 84\-87 of its header, and Minolta MRW wraps one in a
 .B \(rs0TTW
 block.
 .PP
-Two predate all of that and keep a plain Unix timestamp instead: Canon CRW
-holds one in the CIFF heap its trailing pointer leads to, and Sigma X3F as a
+The rest keep a date of their own making. Canon CRW holds a Unix timestamp in
+the CIFF heap its trailing pointer leads to and Sigma X3F keeps one as a
 .B TIME
-property in a UTF\-16 property list. Both are read as the camera's own clock and
-both are checked for a plausible year, so a misread yields no date rather than
-a wrong one. Anything else on the card, including AVCHD
+property in a UTF\-16 property list; AVI writes the recording date out in words
+in an
+.B IDIT
+chunk; Matroska counts nanoseconds from 2001 and ASF ten\-millionths of a second
+from 1601; DV writes the date and time as binary\-coded decimal in the auxiliary
+packs of its first blocks; and Redcode keeps one run of digits in a numbered
+record. Every one is read as the camera's own clock and checked for a plausible
+year, so a misread yields no date rather than a wrong one. Anything else on the
+card, including AVCHD
 .B .CPI
 sidecars, is left untouched.
 .PP
-Not read yet: AVCHD clips
-.RB ( MTS ", " M2TS )
+Storing no date this can read: AVCHD clips
+.RB ( MTS ", " M2TS ", " M2T ),
+MPEG program streams
+.RB ( MPG ", " VOB ", " M2V )
 and HLG photos
-.RB ( HSP ),
-neither of which records a date this can read. Also unread, and unlikely to
-change: the cinema containers
-.BR MXF ", " BRAW " and " R3D ,
-and Matroska
-.BR MKV ,
-whose only standard date is UTC with no local clock to recover from it.
+.RB ( HSP ).
+Neither this nor exiftool finds a date inside them, so they are placed from a
+sibling or the filesystem.
+.B .TS
+is not picked up at all, despite being the same transport stream as
+.BR .MTS :
+it holds no date either way, and a folder of TypeScript is the likelier
+meaning.
 .SH HOW THE DATE IS FOUND
 The first of these that answers wins.
 .IP 1. 4

@@ -11,16 +11,36 @@ const EARLIEST_PLAUSIBLE_YEAR = 1995;
 const LATEST_PLAUSIBLE_YEAR = 2100;
 
 const SECONDS_BETWEEN_1904_AND_1970 = 2082844800;
+const SECONDS_BETWEEN_1601_AND_1970 = 11644473600;
+const SECONDS_BETWEEN_1970_AND_2001 = 978307200;
 const MILLISECONDS_PER_SECOND = 1000;
+const HUNDRED_NANOSECONDS_PER_SECOND = 10000000;
+const NANOSECONDS_PER_SECOND = 1000000000;
 
 const EXIF_DATE_TIME_PATTERN = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/;
 const ISO_8601_DATE_TIME_PATTERN = /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/;
 const A_TIME_STAMPED_IN_UTC_RATHER_THAN_THE_CAMERA_S_OWN_CLOCK = /Z\s*$/;
 
+// The two shapes a date gets written out in words. AVI's IDIT chunk uses the one C's
+// ctime prints -- "Mon Mar 10 15:04:43 2003" -- and a PNG's Creation Time uses the one
+// mail headers use, "Sat, 14 Oct 2025 15:53:46". The day name is never needed and the
+// year moves from one end to the other, which is the whole difference between them.
+const MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const DATE_WITH_THE_YEAR_LAST = /([a-z]{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})/i;
+const DATE_WITH_THE_YEAR_IN_THE_MIDDLE = /(\d{1,2})\s+([a-z]{3})[a-z]*\s+(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/i;
+// A date and time with a slash or a dash between the numbers, written by the camcorders
+// that filled an AVI's ICRD chunk: "2005-11-28 09:19:00", "2001/ 1/27 13:42:00".
+const DATE_WRITTEN_IN_NUMBERS = /(\d{4})[-/]\s*(\d{1,2})[-/]\s*(\d{1,2})[-/]?[T\s]+(\d{1,2}):\s*(\d{2}):?(\d{2})?/;
+
 const twoDigits = (number) => String(number).padStart(2, '0');
 
 const cameraClock = (year, month, day, hour, minute, second) =>
   Object.freeze({ year, month, day, hour, minute, second });
+
+// For a format that writes the fields out separately rather than as text or as a count of
+// seconds. A null field means the bytes were not there to read.
+export const cameraClockFrom = (year, month, day, hour, minute, second) =>
+  (year === null ? null : cameraClock(year, month, day, hour, minute, second));
 
 export const formatCameraClock = (clock) =>
   `${clock.year}-${twoDigits(clock.month)}-${twoDigits(clock.day)} `
@@ -57,6 +77,31 @@ export const cameraClockFromDate = (date) =>
   cameraClock(date.getFullYear(), date.getMonth() + 1, date.getDate(),
     date.getHours(), date.getMinutes(), date.getSeconds());
 
+const monthNumberFor = (monthName) => MONTH_NAMES.indexOf(monthName.slice(0, 3).toLowerCase()) + 1;
+
+export function cameraClockFromDateWrittenOut(text) {
+  if (text === null) return null;
+
+  const yearLast = DATE_WITH_THE_YEAR_LAST.exec(text);
+  if (yearLast !== null && monthNumberFor(yearLast[1]) > 0) {
+    return cameraClock(Number(yearLast[6]), monthNumberFor(yearLast[1]), Number(yearLast[2]),
+      Number(yearLast[3]), Number(yearLast[4]), Number(yearLast[5]));
+  }
+
+  const yearInTheMiddle = DATE_WITH_THE_YEAR_IN_THE_MIDDLE.exec(text);
+  if (yearInTheMiddle !== null && monthNumberFor(yearInTheMiddle[2]) > 0) {
+    return cameraClock(Number(yearInTheMiddle[3]), monthNumberFor(yearInTheMiddle[2]), Number(yearInTheMiddle[1]),
+      Number(yearInTheMiddle[4]), Number(yearInTheMiddle[5]), Number(yearInTheMiddle[6]));
+  }
+
+  const inNumbers = DATE_WRITTEN_IN_NUMBERS.exec(text);
+  if (inNumbers !== null) {
+    return cameraClock(Number(inNumbers[1]), Number(inNumbers[2]), Number(inNumbers[3]),
+      Number(inNumbers[4]), Number(inNumbers[5]), Number(inNumbers[6] ?? 0));
+  }
+  return null;
+}
+
 export function cameraClockFromSecondsSince1904(secondsSince1904) {
   const asIfTheSecondsWereUTC = new Date((secondsSince1904 - SECONDS_BETWEEN_1904_AND_1970) * MILLISECONDS_PER_SECOND);
   return cameraClock(
@@ -67,6 +112,15 @@ export function cameraClockFromSecondsSince1904(secondsSince1904) {
 
 export const cameraClockFromSecondsSince1970 = (secondsSince1970) =>
   cameraClockFromSecondsSince1904(secondsSince1970 + SECONDS_BETWEEN_1904_AND_1970);
+
+// Windows counts in ten-millionths of a second from 1601, which is how an ASF file --
+// a WMV off an older camcorder -- writes the moment it was recorded.
+export const cameraClockFromHundredNanosecondsSince1601 = (hundredNanoseconds) =>
+  cameraClockFromSecondsSince1970(hundredNanoseconds / HUNDRED_NANOSECONDS_PER_SECOND - SECONDS_BETWEEN_1601_AND_1970);
+
+// Matroska counts in nanoseconds from 2001, which is how MKV and WebM date a recording.
+export const cameraClockFromNanosecondsSince2001 = (nanoseconds) =>
+  cameraClockFromSecondsSince1970(nanoseconds / NANOSECONDS_PER_SECOND + SECONDS_BETWEEN_1970_AND_2001);
 
 const clockFromMatch = (parts) => (parts === null
   ? null

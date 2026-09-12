@@ -12,7 +12,11 @@ const JPEG_MARKERS_WITH_NO_LENGTH_FIELD = new Set([0x01, 0xd0, 0xd1, 0xd2, 0xd3,
 const BYTES_IN_JPEG_MARKER = 2;
 const BYTES_IN_JPEG_SEGMENT_LENGTH_FIELD = 2;
 const SHORTEST_VALID_JPEG_SEGMENT_LENGTH = 2;
-const MOST_JPEG_SEGMENTS_BEFORE_THE_IMAGE_DATA = 64;
+// A colour-managed JPEG carries its ICC profile in as many APP2 segments as it takes, and
+// a phone adds APP4 depth maps on top, so a low ceiling here is a photo left undated for
+// being too well described. The ceiling is only here to stop a walk over bytes that are
+// not a JPEG at all, so it is set where no real file reaches.
+const MOST_JPEG_SEGMENTS_BEFORE_THE_IMAGE_DATA = 4096;
 
 export const EXIF_HEADER = 'Exif\0\0';
 const BYTES_FROM_SEGMENT_START_TO_EXIF_HEADER = BYTES_IN_JPEG_MARKER + BYTES_IN_JPEG_SEGMENT_LENGTH_FIELD;

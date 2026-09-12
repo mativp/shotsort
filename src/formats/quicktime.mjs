@@ -6,7 +6,7 @@ import { BYTES_IN_A_SHORT_FIELD, readTextAt, readUInt8At, readUInt32At, readUInt
 import {
   ISO_BOX_TYPE_FIELD_BYTES, METADATA_BOX_TYPE, MOVIE_BOX_TYPE, MOVIE_HEADER_BOX_TYPE, USER_DATA_BOX_TYPE,
   BYTES_IN_A_BOX_THAT_STARTS_WITH_A_VERSION_AND_FLAGS,
-  findIsoBox, findIsoBoxPath, insideABoxThatStartsWithAVersionAndFlags, readTextInside,
+  findIsoBox, findIsoBoxPath, insideAMetadataBox, readTextInside,
 } from './isoBaseMedia.mjs';
 import { readCameraClockFromJpeg } from './jpeg.mjs';
 import { cameraClockFromIso8601, cameraClockFromSecondsSince1904, onlyIfPlausible } from '../clock.mjs';
@@ -49,7 +49,7 @@ function readCreationDateFromUserData(byteSource, movieBox) {
 function readCreationDateWrittenByApple(byteSource, movieBox) {
   const metadataBox = findIsoBox(byteSource, movieBox.contentStart, movieBox.contentEnd, METADATA_BOX_TYPE);
   if (metadataBox === null) return null;
-  const metadataContents = insideABoxThatStartsWithAVersionAndFlags(metadataBox);
+  const metadataContents = insideAMetadataBox(byteSource, metadataBox);
 
   const keysBox = findIsoBox(byteSource, metadataContents.contentStart, metadataContents.contentEnd, METADATA_KEYS_BOX_TYPE);
   const itemListBox = findIsoBox(byteSource, metadataContents.contentStart, metadataContents.contentEnd, METADATA_ITEM_LIST_BOX_TYPE);

@@ -9,7 +9,10 @@ import {
   PANASONIC_RAW_SIGNATURE, TIFF_STANDARD_SIGNATURE,
   OLYMPUS_RAW_SIGNATURE, OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES,
   jpegFileWithARestartMarkerFirst, jpegFileBuriedUnderManySegments, movieFileWhoseMovieBoxRunsToTheEnd,
-  jpegFilePaddedTo,
+  jpegFileBehindAsManySegmentsAsAPhotoReallyHas, jpegFilePaddedTo, TIFF_VALUE_TYPE_LONG,
+  pngStill, pngStillDatedOnlyInItsText, pngStillDatedOnlyByWhenItWasLastWritten, webPStill, jpegXlStill,
+  digitalVideoClip, redcodeClip,
+  aviFileRecordingWhenItWasShot, aviFileSayingOnlyWhenItWasCreated, matroskaMovie, windowsMediaMovie,
   movieFile, canonRawFile, fujifilmRawFile, heifStill, bigTiffFile,
   movieFileSayingWhichZoneItsClockIsIn, movieFileCarryingACanonThumbnail, movieFileWithAnAppleCreationDate,
   minoltaRawFile, canonCiffRawFile, sigmaRawFile,
@@ -268,8 +271,46 @@ function theRawEveryMakerWrites() {
 
   expect('a raw written most significant byte first is read the same as one written the other way round',
     dateOf('DSC_0003.NEF', bigEndianTiffFile('2026:08:27 09:07:00')) === '2026-08-27 09:07:00');
-  expect('a file whose signature belongs to no camera is left alone rather than guessed at',
-    dateOf('spreadsheet.tif', tiffFile({ signature: 0x1234, dateTimeOriginal: '2026:08:27 09:08:00' })) === null);
+  expect('a raw whose signature belongs to no maker this knows is still read, the way exiftool reads one',
+    dateOf('DSC_0004.IIQ', tiffFile({ signature: 0x4949, dateTimeOriginal: '2026:08:27 09:08:00' }))
+    === '2026-08-27 09:08:00');
+  expect('a big tiff pointing at its exif with a narrow offset is read whichever way round its bytes are',
+    dateOf('L1000003.DNG', bigTiffFile('2026:08:27 09:09:00', { bigEndian: true, pointerType: TIFF_VALUE_TYPE_LONG }))
+    === '2026-08-27 09:09:00');
+  expect('a photo carrying the segments a colour managed photo really carries is read',
+    dateOf('P1010001.JPG', jpegFileBehindAsManySegmentsAsAPhotoReallyHas('2026:08:27 09:10:00'))
+    === '2026-08-27 09:10:00');
+}
+
+// Everything that is neither a TIFF, a JPEG nor a box tree. These are the formats a
+// camera, a phone or a camcorder writes that used to leave a file undated.
+function theFormatsThatAreBuiltSomeOtherWay() {
+  const dump = fs.mkdtempSync(path.join(temporaryDirectory, 'other-shapes-'));
+  const dateOf = (fileName, contents) => {
+    const filePath = path.join(dump, fileName);
+    writeFixtureFile(filePath, contents);
+    return clockTextOf(filePath);
+  };
+
+  const eachOne = [
+    ['a screenshot carrying exif', 'IMG_0100.PNG', pngStill('2026:08:27 10:00:00'), '2026-08-27 10:00:00'],
+    ['a png dated only in its text', 'scan.PNG', pngStillDatedOnlyInItsText('Thu, 27 Aug 2026 10:01:00 +0000'), '2026-08-27 10:01:00'],
+    ['a webp off a phone', 'IMG_0101.WEBP', webPStill('2026:08:27 10:02:00'), '2026-08-27 10:02:00'],
+    ['a jpeg xl', 'IMG_0102.JXL', jpegXlStill('2026:08:27 10:03:00'), '2026-08-27 10:03:00'],
+    ['an avi recording when it was shot', 'MVI_0103.AVI', aviFileRecordingWhenItWasShot('Thu Aug 27 10:04:00 2026'), '2026-08-27 10:04:00'],
+    ['an avi saying only when it was created', 'MVI_0104.AVI', aviFileSayingOnlyWhenItWasCreated('2026-08-27 10:05:00'), '2026-08-27 10:05:00'],
+    ['a matroska recording', 'CLIP0105.MKV', matroskaMovie('2026-08-27 10:06:00'), '2026-08-27 10:06:00'],
+    ['a windows media clip', 'CLIP0106.WMV', windowsMediaMovie('2026-08-27 10:07:00'), '2026-08-27 10:07:00'],
+    ['a tape camcorder clip', 'CLIP0107.DV', digitalVideoClip('2026-08-27 10:08:00'), '2026-08-27 10:08:00'],
+    ['a cinema camera take', 'A001_C001.R3D', redcodeClip('2026-08-27 10:10:00'), '2026-08-27 10:10:00'],
+    ['a png dated only by when it was written', 'export.PNG', pngStillDatedOnlyByWhenItWasLastWritten('2026-08-27 10:09:00'), '2026-08-27 10:09:00'],
+  ];
+  for (const [whatItIs, fileName, contents, whenItWasShot] of eachOne) {
+    expect(`${whatItIs} is read for the date inside it`, dateOf(fileName, contents) === whenItWasShot);
+  }
+
+  expect('a png with nothing in it to go on is left undated rather than guessed at',
+    dateOf('blank.PNG', pngStillDatedOnlyInItsText('no date here at all')) === null);
 }
 
 function aCardFromAnotherMakerSortsToo() {
@@ -1034,6 +1075,7 @@ twoCardFoldersReusingTheSameFileNumber();
 nothingIsWrittenUntilTheWholePlanIsSettled();
 containersThatAreLegalButUnusual();
 theRawEveryMakerWrites();
+theFormatsThatAreBuiltSomeOtherWay();
 aCardFromAnotherMakerSortsToo();
 theContainersThatHoldTheirExifSomewhereElse();
 theRawFormatsThatPredateTiff();

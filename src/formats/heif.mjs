@@ -6,7 +6,7 @@ import {
 } from '../bytes.mjs';
 import {
   BYTES_IN_A_BOX_THAT_STARTS_WITH_A_VERSION_AND_FLAGS, ISO_BOX_TYPE_FIELD_BYTES, METADATA_BOX_TYPE,
-  findIsoBox, findIsoBoxWhere, insideABoxThatStartsWithAVersionAndFlags, versionOfBoxAt,
+  findIsoBox, findIsoBoxWhere, insideAMetadataBox, versionOfBoxAt,
 } from './isoBaseMedia.mjs';
 import { readCameraClockFromTiff } from './tiff.mjs';
 import { EXIF_HEADER } from './jpeg.mjs';
@@ -142,7 +142,7 @@ function findWhereTheItemIsStored(byteSource, metadataContents, wantedItemId) {
 export function readCameraClockFromHeifStill(byteSource) {
   const metadataBox = findIsoBox(byteSource, 0, byteSource.sizeInBytes, METADATA_BOX_TYPE);
   if (metadataBox === null) return null;
-  const metadataContents = insideABoxThatStartsWithAVersionAndFlags(metadataBox);
+  const metadataContents = insideAMetadataBox(byteSource, metadataBox);
 
   const exifItemId = findTheExifItemsId(byteSource, metadataContents);
   if (exifItemId === null) return null;

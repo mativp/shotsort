@@ -1,24 +1,23 @@
 // TIFF directories, which is where most of the world's cameras put the date: plain TIFF,
 // BigTIFF, the Exif segment of a JPEG, and the raw of Panasonic, Olympus and everyone
 // else who dressed their raw up as a TIFF.
+//
+// The number after the byte order mark is deliberately not checked against a list. Every
+// maker who dressed a raw up as a TIFF picked their own -- 0x55 for Panasonic, 0x4f52 and
+// 0x5352 for Olympus, 0x4352 for a DNG profile, 0x4949 for Phase One, 0xbc for Windows HD
+// Photo, and whatever the next maker chooses -- so a list of the ones known today is a
+// list that leaves tomorrow's raw undated. What is checked is the thing that actually has
+// to hold for the directories to be readable: a byte order mark, and a first directory
+// that begins after the header rather than inside it.
 import { readTextAt, readUInt16At, readUInt32At, readUInt64EitherWayRoundAt } from '../bytes.mjs';
 import { cameraClockFromExifText } from '../clock.mjs';
 
 export const TIFF_LITTLE_ENDIAN_MARK = 'II';
 export const TIFF_BIG_ENDIAN_MARK = 'MM';
 
-const TIFF_STANDARD_SIGNATURE = 0x2a;
-const PANASONIC_RAW_SIGNATURE = 0x55;
-const OLYMPUS_RAW_SIGNATURE = 0x4f52;
-const OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES = 0x5352;
-const TIFF_SIGNATURES_WORTH_READING = new Set([
-  TIFF_STANDARD_SIGNATURE,
-  PANASONIC_RAW_SIGNATURE,
-  OLYMPUS_RAW_SIGNATURE,
-  OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES,
-]);
 const BIG_TIFF_SIGNATURE = 0x2b;
 const TIFF_SIGNATURE_POSITION = 2;
+const BYTES_IN_A_TIFF_HEADER = 8;
 const TIFF_FIRST_DIRECTORY_POINTER_POSITION = 4;
 const BIG_TIFF_OFFSET_SIZE_POSITION = 4;
 const BIG_TIFF_FIRST_DIRECTORY_POINTER_POSITION = 8;
@@ -31,7 +30,12 @@ const TIFF_TAG_DATE_TIME_ORIGINAL = 0x9003;
 const TIFF_TAG_CREATE_DATE = 0x9004;
 
 const TIFF_VALUE_TYPE_ASCII = 2;
-const BYTES_PER_TIFF_VALUE_TYPE = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8, 11: 4, 12: 8 };
+// Types 13, 16, 17 and 18 are the wide ones BigTIFF added; a reader that does not know
+// them measures a BigTIFF entry's value as one byte each and reads the wrong bytes.
+const BYTES_PER_TIFF_VALUE_TYPE = {
+  1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8,
+  13: 4, 16: 8, 17: 8, 18: 8,
+};
 const BYTES_PER_UNKNOWN_TIFF_VALUE_TYPE = 1;
 const MOST_ENTRIES_A_REAL_DIRECTORY_HAS = 512;
 const LONGEST_DATE_STRING_IN_BYTES = 32;
@@ -100,6 +104,19 @@ function readAsciiEntry(byteSource, entry) {
 const findEntry = (entries, tag, valueType) =>
   entries.find((entry) => entry.tag === tag && entry.valueType === valueType) ?? null;
 
+// A pointer to another directory is read at the width its own type declares, not at the
+// width the file's offsets happen to be. A BigTIFF whose Exif pointer is an ordinary
+// four-byte LONG keeps that pointer in the first four bytes of an eight-byte value field,
+// so reading all eight lands on the right number by luck on a little-endian file and on
+// nothing at all on a big-endian one.
+function readPointerHeldBy(byteSource, entry, isLittleEndian, layout) {
+  const bytesInThePointer = BYTES_PER_TIFF_VALUE_TYPE[entry.valueType] ?? layout.largestValueStoredInsideAnEntry;
+  if (bytesInThePointer === BYTES_IN_A_BIG_TIFF_OFFSET) {
+    return readUInt64EitherWayRoundAt(byteSource, entry.valueStart, isLittleEndian);
+  }
+  return readUInt32At(byteSource, entry.valueStart, isLittleEndian);
+}
+
 // `readEmbeddedJpeg` is how a raw that keeps its only date inside the preview JPEG it
 // carries gets read. It is passed in rather than imported so that tiff and jpeg, which
 // each need the other, do not have to be one module.
@@ -109,8 +126,8 @@ export function readCameraClockFromTiff(byteSource, tiffStart, { readEmbeddedJpe
   const { isLittleEndian } = byteOrder;
 
   const signature = readUInt16At(byteSource, tiffStart + TIFF_SIGNATURE_POSITION, isLittleEndian);
+  if (signature === null) return null;
   const isBigTiff = signature === BIG_TIFF_SIGNATURE;
-  if (!isBigTiff && !TIFF_SIGNATURES_WORTH_READING.has(signature)) return null;
 
   const layout = isBigTiff ? BIG_TIFF_DIRECTORY_LAYOUT : ORDINARY_TIFF_DIRECTORY_LAYOUT;
   const offsetsAreEightBytesWide = !isBigTiff
@@ -120,13 +137,13 @@ export function readCameraClockFromTiff(byteSource, tiffStart, { readEmbeddedJpe
   const firstDirectoryOffset = isBigTiff
     ? readUInt64EitherWayRoundAt(byteSource, tiffStart + BIG_TIFF_FIRST_DIRECTORY_POINTER_POSITION, isLittleEndian)
     : readUInt32At(byteSource, tiffStart + TIFF_FIRST_DIRECTORY_POINTER_POSITION, isLittleEndian);
-  if (firstDirectoryOffset === null) return null;
+  if (firstDirectoryOffset === null || firstDirectoryOffset < BYTES_IN_A_TIFF_HEADER) return null;
 
   const mainEntries = readTiffDirectoryEntries(byteSource, tiffStart, tiffStart + firstDirectoryOffset, isLittleEndian, layout);
   const exifDirectoryPointer = mainEntries.find((entry) => entry.tag === TIFF_TAG_EXIF_DIRECTORY_POINTER) ?? null;
   const exifDirectoryOffset = exifDirectoryPointer === null
     ? null
-    : layout.readOffset(byteSource, exifDirectoryPointer.valueStart, isLittleEndian);
+    : readPointerHeldBy(byteSource, exifDirectoryPointer, isLittleEndian, layout);
   const exifEntries = exifDirectoryOffset === null
     ? []
     : readTiffDirectoryEntries(byteSource, tiffStart, tiffStart + exifDirectoryOffset, isLittleEndian, layout);

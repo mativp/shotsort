@@ -3,13 +3,16 @@ import { readTextAt, readUInt32At } from '../bytes.mjs';
 import { ISO_BOX_TYPE_FIELD_BYTES } from './isoBaseMedia.mjs';
 import { readCameraClockFromTiff } from './tiff.mjs';
 
-const MINOLTA_RAW_MARK = '\0MRM';
+// Minolta wrote \0MRM; Konica Minolta's later bodies wrote \0MRI. The blocks inside are
+// laid out the same either way.
+const MINOLTA_RAW_MARKS = ['\0MRM', '\0MRI'];
+const BYTES_IN_A_MINOLTA_RAW_MARK = 4;
 const MINOLTA_BLOCK_HOLDING_A_TIFF = '\0TTW';
 const BYTES_IN_A_MINOLTA_BLOCK_HEADER = 8;
 const BYTES_IN_A_MINOLTA_BLOCK_TYPE = ISO_BOX_TYPE_FIELD_BYTES;
 
 export const startsWithAMinoltaRawMark = (byteSource) =>
-  readTextAt(byteSource, 0, MINOLTA_RAW_MARK.length) === MINOLTA_RAW_MARK;
+  MINOLTA_RAW_MARKS.includes(readTextAt(byteSource, 0, BYTES_IN_A_MINOLTA_RAW_MARK));
 
 export function readCameraClockFromMinoltaRaw(byteSource) {
   let blockStart = BYTES_IN_A_MINOLTA_BLOCK_HEADER;

@@ -13,6 +13,13 @@ import { readCameraClockFromFujifilmRaw, startsWithAFujifilmRawMark } from './fu
 import { readCameraClockFromMinoltaRaw, startsWithAMinoltaRawMark } from './minolta.mjs';
 import { readCameraClockFromSigmaRaw, startsWithASigmaRawMark } from './sigma.mjs';
 import { readCameraClockFromHeifStill } from './heif.mjs';
+import { readCameraClockFromJpegXl, startsWithAJpegXlContainerSignature } from './jpegXl.mjs';
+import { readCameraClockFromPng, startsWithAPngSignature } from './png.mjs';
+import { readCameraClockFromRiff, startsWithARiffMark } from './riff.mjs';
+import { readCameraClockFromMatroska, startsWithAnEbmlHeader } from './matroska.mjs';
+import { readCameraClockFromAsf, startsWithAnAsfHeaderObject } from './asf.mjs';
+import { readCameraClockFromDigitalVideo, startsWithADvBlockMark } from './digitalVideo.mjs';
+import { readCameraClockFromRedcode, startsWithARedcodeMark } from './redcode.mjs';
 import { readCameraClockFromMovie } from './quicktime.mjs';
 
 const NOTHING_MARKS_THIS_FORMAT_SO_IT_IS_ONLY_WORTH_ATTEMPTING = null;
@@ -22,6 +29,48 @@ export const FORMATS_IN_THE_ORDER_THEY_ARE_TRIED = [
     name: 'JPEG',
     recognisedBy: startsWithAJpegSignature,
     read: (byteSource) => readCameraClockFromJpeg(byteSource),
+    source: DATE_SOURCE.exifMetadata,
+  },
+  {
+    name: 'PNG',
+    recognisedBy: startsWithAPngSignature,
+    read: readCameraClockFromPng,
+    source: DATE_SOURCE.exifMetadata,
+  },
+  {
+    name: 'RIFF, which is AVI and WebP',
+    recognisedBy: startsWithARiffMark,
+    read: readCameraClockFromRiff,
+    source: DATE_SOURCE.exifMetadata,
+  },
+  {
+    name: 'Matroska, which is MKV and WebM',
+    recognisedBy: startsWithAnEbmlHeader,
+    read: readCameraClockFromMatroska,
+    source: DATE_SOURCE.videoHeader,
+  },
+  {
+    name: 'ASF, which is WMV',
+    recognisedBy: startsWithAnAsfHeaderObject,
+    read: readCameraClockFromAsf,
+    source: DATE_SOURCE.videoHeader,
+  },
+  {
+    name: 'DV, off a tape camcorder',
+    recognisedBy: startsWithADvBlockMark,
+    read: readCameraClockFromDigitalVideo,
+    source: DATE_SOURCE.videoHeader,
+  },
+  {
+    name: 'Redcode, off a RED cinema camera',
+    recognisedBy: startsWithARedcodeMark,
+    read: readCameraClockFromRedcode,
+    source: DATE_SOURCE.videoHeader,
+  },
+  {
+    name: 'JPEG XL',
+    recognisedBy: startsWithAJpegXlContainerSignature,
+    read: readCameraClockFromJpegXl,
     source: DATE_SOURCE.exifMetadata,
   },
   {

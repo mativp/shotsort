@@ -17,12 +17,13 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node test/unittest.mjs && node test/selftest.mjs",
+    "test": "node test/unittest.mjs && node test/selftest.mjs && node test/oracle.mjs",
     "test:unit": "node test/unittest.mjs",
     "test:end-to-end": "node test/selftest.mjs",
     "lint": "eslint .",
     "coverage": "node --experimental-test-coverage --test test/coverage.mjs",
-    "prepublishOnly": "npm run lint && npm test"
+    "prepublishOnly": "npm run lint && npm test",
+    "test:against-exiftool": "node test/oracle.mjs"
   },
   "keywords": [
     "photo",

@@ -4,7 +4,7 @@ import { readTextAt, readUInt8At, readUInt32At, readUInt64At } from '../bytes.mj
 
 const ISO_BOX_HEADER_BYTES = 8;
 const ISO_BOX_HEADER_WITH_64_BIT_SIZE_BYTES = 16;
-const ISO_BOX_SIZE_FIELD_BYTES = 4;
+export const ISO_BOX_SIZE_FIELD_BYTES = 4;
 const ISO_BOX_SIZE_MEANING_A_64_BIT_SIZE_FOLLOWS = 1;
 const ISO_BOX_SIZE_MEANING_THIS_BOX_RUNS_TO_THE_END = 0;
 
@@ -17,6 +17,7 @@ export const MOVIE_HEADER_BOX_TYPE = 'mvhd';
 export const USER_DATA_BOX_TYPE = 'udta';
 export const METADATA_BOX_TYPE = 'meta';
 export const UUID_BOX_TYPE = 'uuid';
+export const HANDLER_BOX_TYPE = 'hdlr';
 
 export function findIsoBoxWhere(byteSource, searchStart, searchEnd, isTheOneWanted) {
   let boxStart = searchStart;
@@ -61,6 +62,20 @@ export const insideABoxThatStartsWithAVersionAndFlags = (box) => ({
   contentStart: box.contentStart + BYTES_IN_A_BOX_THAT_STARTS_WITH_A_VERSION_AND_FLAGS,
   contentEnd: box.contentEnd,
 });
+
+// The metadata box is the one place the two families disagree about their own rules.
+// QuickTime, which is what a .MOV off an iPhone is, goes straight to the children; MP4 and
+// HEIF put a version and flags in front of them. Nothing in the box says which, so the
+// handler box that has to come first either way is what settles it -- and getting this
+// wrong is not a parse error but four bytes of drift, which finds nothing and says
+// nothing about why.
+export function insideAMetadataBox(byteSource, box) {
+  const handlerAt = (position) =>
+    readTextAt(byteSource, position + ISO_BOX_SIZE_FIELD_BYTES, ISO_BOX_TYPE_FIELD_BYTES) === HANDLER_BOX_TYPE;
+  return handlerAt(box.contentStart)
+    ? { contentStart: box.contentStart, contentEnd: box.contentEnd }
+    : insideABoxThatStartsWithAVersionAndFlags(box);
+}
 
 export const readTextInside = (byteSource, box, skippingBytes, longestWorthReading) => {
   const textStart = box.contentStart + skippingBytes;
