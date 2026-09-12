@@ -3,14 +3,6 @@
 Sort a folder of camera files into one folder per shooting day, using the date
 the camera wrote inside each file. No dependencies, no exiftool.
 
-```
-$ shotsort ~/Import
-2026-08-27 ~     7 files      1.4 GB
-2026-08-28       2 files      8.4 GB
-2026-08-29 ~     2 files      6.2 GB
-11 moved, 4 empty folders removed
-```
-
 ## Install
 
 ```sh
