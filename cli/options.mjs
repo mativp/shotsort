@@ -10,7 +10,10 @@ import { PROGRAM_NAME } from './usage.mjs';
 
 export const WHAT_TO_DO = {
   sort: 'sort',
-  printUsage: 'print usage',
+  // Two, because being asked for the usage and being given nothing to do are different
+  // questions: the first wants the manual, the second wants to know what this is.
+  printTheUsageInBrief: 'print the usage in brief',
+  printTheUsageInFull: 'print the usage in full',
   printVersion: 'print version',
   refuse: 'refuse',
 };
@@ -18,7 +21,8 @@ export const WHAT_TO_DO = {
 const SHORT_OPTIONS_THAT_TAKE_A_VALUE = new Set(['s', 'd']);
 
 const sort = (options) => ({ whatToDo: WHAT_TO_DO.sort, options });
-const printUsage = () => ({ whatToDo: WHAT_TO_DO.printUsage });
+const printTheUsageInBrief = () => ({ whatToDo: WHAT_TO_DO.printTheUsageInBrief });
+const printTheUsageInFull = () => ({ whatToDo: WHAT_TO_DO.printTheUsageInFull });
 const printVersion = () => ({ whatToDo: WHAT_TO_DO.printVersion });
 const refuse = (problem) => ({ whatToDo: WHAT_TO_DO.refuse, problem });
 
@@ -53,7 +57,7 @@ function parseEveryArgument(commandLineArguments, options) {
     else if (letter === 'q') options.quiet = true;
     else if (letter === 'd') options.destination = nextArgumentAsValue('-d');
     else if (letter === 's') options.inputPaths.push(nextArgumentAsValue('-s'));
-    else if (letter === 'h') throw new NothingToDoButPrint(printUsage());
+    else if (letter === 'h') throw new NothingToDoButPrint(printTheUsageInFull());
     else if (letter === 'V') throw new NothingToDoButPrint(printVersion());
     else throw new TheCommandLineWasWrong(`unrecognised option '-${letter}'`);
   };
@@ -84,7 +88,7 @@ function parseEveryArgument(commandLineArguments, options) {
     else if (optionName === '--source') options.inputPaths.push(nextArgumentAsValue(optionName));
     else if (optionName === '--layout') options.layout = nextArgumentAsValue(optionName);
     else if (optionName === '--day-start') options.hourTheDayStartsAt = Number(nextArgumentAsValue(optionName));
-    else if (optionName === '--help') throw new NothingToDoButPrint(printUsage());
+    else if (optionName === '--help') throw new NothingToDoButPrint(printTheUsageInFull());
     else if (optionName === '--version') throw new NothingToDoButPrint(printVersion());
     else throw new TheCommandLineWasWrong(`unrecognised option '${optionName}'`);
   };
@@ -104,6 +108,13 @@ function parseEveryArgument(commandLineArguments, options) {
   }
 }
 
+// The refusal a first run is likeliest to hit, so it answers the question it raises:
+// what does naming a folder look like? The folder you are already standing in still has
+// to be spelled out, and '.' is not obvious to everyone, which is why it leads.
+const NAME_THE_FOLDER_TO_SORT = `name the folder to sort, for example:
+  ${PROGRAM_NAME} .             the folder you are standing in
+  ${PROGRAM_NAME} ~/Import      a folder named in full`;
+
 function theProblemWith(options) {
   const dayStartIsAnHour = Number.isInteger(options.hourTheDayStartsAt)
     && options.hourTheDayStartsAt >= EARLIEST_HOUR_A_DAY_MAY_START_AT
@@ -113,12 +124,12 @@ function theProblemWith(options) {
   }
   if (!layoutIsUsable(options.layout)) return `--layout must be ${LAYOUT_MUST_BE}`;
   if (options.verbose && options.quiet) return '--verbose and --quiet contradict each other';
-  if (options.inputPaths.length === 0) return `name the folder to sort, for example: ${PROGRAM_NAME} ~/Import`;
+  if (options.inputPaths.length === 0) return NAME_THE_FOLDER_TO_SORT;
   return null;
 }
 
 export function decideWhatToDo(commandLineArguments) {
-  if (commandLineArguments.length === 0) return printUsage();
+  if (commandLineArguments.length === 0) return printTheUsageInBrief();
 
   const options = {
     inputPaths: [],

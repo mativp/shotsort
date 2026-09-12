@@ -39,40 +39,105 @@ cp man/shotsort.1 /usr/local/share/man/man1/
 
 ## Use
 
-Copy everything off the card however you like, then point it at the folder:
+Copy everything off the card however you like — Finder, `ditto`, `rsync` — then
+point `shotsort` at the folder. Three commands cover nearly every use:
 
 ```sh
-shotsort                                # print the options, sort nothing
-shotsort -n -s ~/Import -d ~/Photos     # see the plan, change nothing
-shotsort -s ~/Import -d ~/Photos        # sort it
+shotsort -n .                        # see the plan, change nothing
+shotsort .                           # sort the folder you are standing in
+shotsort -s . -d ~/Pictures/2026     # copy it into a library elsewhere
 ```
+
+Start with `-n`. It settles the whole plan and prints it, and writes nothing:
+
+```console
+$ cd ~/Import
+$ shotsort -n .
+2026-08-27     142 files     1.9 GB
+2026-08-28      96 files     1.3 GB
+2026-08-29 ~   211 files     3.0 GB
+undated          4 files   812.0 MB
+453 to copy  (dry run)
+```
+
+One line per day folder it would make, then the total. Drop the `-n` and the
+same run happens for real and ends `453 copied` instead.
+
+The `~` marks a day holding files that record no date inside themselves, and
+`undated/` collects the ones whose filesystem date could not be trusted
+either. Both are explained on standard error as they happen, and at length
+under [Files that record no date](#files-that-record-no-date).
 
 Files are **copied, never moved**, unless you ask for `--move`. A mistaken run
 therefore costs nothing but disk space, and the folder you copied off the card
-stays exactly as it came. Running it a second time does nothing.
+stays exactly as it came. Running the same command a second time copies
+nothing:
+
+```console
+$ shotsort -s . -d ~/Pictures/2026
+...
+453 copied
+$ shotsort -s . -d ~/Pictures/2026
+...
+0 copied, 453 duplicates skipped
+```
 
 Every file is examined and its destination decided **before anything is
 written**, so nothing moves until the whole plan is settled — and `-n` prints
-that same plan without carrying it out.
+that same plan, computed by the same code, without carrying it out.
 
-Sorting a folder in place works too, and then the day folders sit alongside the
-`DCIM` you copied:
+### The commands you are likely to need
 
-```sh
-shotsort ~/Import      # ~/Import holds both DCIM and the sorted copies
-shotsort -m ~/Import   # the files move instead, and DCIM is removed after
+These are written with `.`, the folder you are standing in, because that is
+where you usually are just after copying a card. Any of them takes a path
+instead — `~/Import`, `/Volumes/UNTITLED` — and works the same.
+
+| Command | What it does |
+|---|---|
+| `shotsort -n .` | Print the plan for the current folder. Writes nothing. |
+| `shotsort .` | Sort the current folder in place. Day folders appear beside the `DCIM` you copied, holding copies. |
+| `shotsort -m .` | The same, moving instead of copying, so nothing is duplicated and the emptied `DCIM` folders are removed. |
+| `shotsort -s . -d ~/Pictures/2026` | Copy the current folder into a library elsewhere and leave the current folder exactly as it is. |
+| `shotsort -n -s . -d ~/Pictures/2026` | Print what that would do, and do none of it. |
+| `shotsort -s /Volumes/UNTITLED -d ~/Pictures/2026` | Build the library straight off the card in the reader. Copying is the default, so the card is only ever read. |
+| `shotsort -s ~/CardA -s ~/CardB -d ~/Pictures/2026` | Sort two cards in one pass, so a raw on one and its JPEG on the other still pair up. |
+| `shotsort -v -m -s . -d ~/Pictures/2026` | Move, printing `source -> destination` for every file as it goes. |
+| `shotsort --day-start 4 .` | Keep a shoot that ran past midnight in the evening it began. |
+| `shotsort --layout '%Y/%F' -s . -d ~/Pictures` | Put a year level above the days: `2026/2026-08-27`. |
+| `shotsort -n --json .` | Print the plan as JSON, one record per file, for a script to read. |
+| `shotsort --ignore-filesystem-date .` | Never guess from filesystem dates: anything with no date inside it goes to `undated/`. |
+
+`-n` and `-v` answer different questions. `-n` prints the plan as a summary of
+the day folders; `-v` prints a line per file *as it is placed*, so under `-n`
+it has nothing to print. For a per-file preview, ask for the plan as JSON:
+
+```console
+$ shotsort -n --json . | head -12
+{
+  "actions": [
+    {
+      "src": "/Users/you/Import/DCIM/100_PANA/P1000001.RW2",
+      "target": "/Users/you/Import/2026-08-27/P1000001.RW2",
+      "folder": "2026-08-27",
+      "stamp": "2026-08-27 14:02:11",
+      "dateFrom": "exif",
+      "size": 23068672,
+      "verdict": "place",
+      "error": null
+    },
 ```
 
-You always have to name the folder. Run with no arguments `shotsort` prints
-its options and sorts nothing, and it never falls back to the folder you
-happen to be standing in — sort the current one with `shotsort .` if that is
-what you mean.
+You always have to name the folder. Run with no arguments `shotsort` prints a
+short version of its options and the commands above, and sorts nothing; it
+never falls back to the folder you happen to be standing in, so sort the
+current one with `shotsort .` if that is what you mean. `shotsort --help` is
+the whole manual, and `man shotsort` the same again in its proper place.
 
 ## Options
 
 ### Where things go
 
-| | |
+| Option | What it does |
 |---|---|
 | `-s`, `--source FOLDER` | The folder to sort. The same as naming it without a flag, and worth spelling out whenever `--dest` is used too, so it is plain which folder is read and which is written. May be given more than once. |
 | `-d`, `--dest FOLDER` | Put the day folders in `FOLDER` instead of inside the source folder. With copying left as the default, this builds a sorted library and leaves the source exactly as it came off the card. |
@@ -95,16 +160,6 @@ shotsort ~/Import                shotsort --day-start 4 ~/Import
 `--day-start 4` moves the boundary to 04:00, so anything shot before 04:00 is
 filed under the previous day. Any hour from 0 to 12.
 
-#### Building a library
-
-```sh
-shotsort -s ~/Import -d ~/Pictures/2026
-```
-
-Reads `~/Import`, writes the day folders into `~/Pictures/2026`, and leaves
-`~/Import` exactly as it came off the card. Add `-m` to move rather than copy;
-drop `-d` and the day folders appear inside the source folder instead.
-
 ### Files that record no date
 
 Stills and video are both filed by the clock the camera was set to, so nothing
@@ -114,36 +169,37 @@ no date this reads — or exiftool reads — is stored inside them, leaving only
 the date the filesystem keeps. Read [What it reads](#what-it-reads) for why that date is
 sometimes worthless and how `shotsort` tells the difference.
 
-| | |
+| Option | What it does |
 |---|---|
 | `--use-filesystem-date` | Date every file that records no date inside itself by the date the filesystem keeps, without checking that date first. |
 | `--ignore-filesystem-date` | Date none of them that way: every file that records no date inside itself goes to `undated/`. |
 
 ### Output
 
-| | |
+| Option | What it does |
 |---|---|
-| `-v`, `--verbose` | Print every file as it is placed, as `source -> destination`. Files already in the right place are not printed. |
+| `-v`, `--verbose` | Print every file as it is placed, as `source -> destination`. Files already in the right place are not printed. Nothing is being placed under `-n`, so the two together print no more than `-n` alone; `-n --json` is the per-file preview. |
 | `-q`, `--quiet` | Print nothing but errors. |
-| `--json` | Print the plan and the result as JSON on standard output: every file with the folder chosen for it, the clock the date came from, and what was done, and a summary carrying everything the notes on standard error would have said. |
+| `--json` | Print the plan and the result as JSON on standard output: every file with the folder chosen for it, the clock the date came from, and what was done, and a summary carrying everything the notes on standard error would have said. With `-n` this is the whole plan, file by file, before anything is written. |
 
 ### Help
 
-| | |
+| Option | What it does |
 |---|---|
-| `-h`, `--help` | Print the usage text and exit, exactly as running `shotsort` with no arguments does. |
+| `-h`, `--help` | Print the full manual — every option, how the date is found, what it reads — and exit. Run with no arguments, `shotsort` prints a short version of it instead. |
 | `-V`, `--version` | Print the version and exit. |
 
 Short options may be run together: `-nv` is `-n -v`. A `--` argument ends
-option parsing.
+option parsing, so a folder whose name begins with a dash still sorts:
+`shotsort -n -- -weird-folder`.
 
 ### Exit status
 
-| | |
+| Code | Meaning |
 |---|---|
 | `0` | Every file was placed. |
 | `1` | Some files were not placed, or none were found. |
-| `2` | The command line was wrong, naming no folder to sort included. Running `shotsort` with no arguments at all therefore prints the usage text and exits `2`. |
+| `2` | The command line was wrong, naming no folder to sort included. Running `shotsort` with no arguments at all therefore prints the short version and exits `2`. |
 
 ## How files are grouped
 

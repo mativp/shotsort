@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WHAT_TO_DO, decideWhatToDo } from '../cli/options.mjs';
 import { fileAsItIsPlaced, reportAsJson, reportForATerminal } from '../cli/report.mjs';
-import { EXIT_CODE, PROGRAM_NAME, USAGE } from '../cli/usage.mjs';
+import { EXIT_CODE, PROGRAM_NAME, USAGE_IN_BRIEF, USAGE_IN_FULL } from '../cli/usage.mjs';
 import { applyPlan } from '../src/apply.mjs';
 import { readTheClockInsideEachFile } from '../src/dating.mjs';
 import { destinationProbeOverTheFilesystem } from '../src/destination.mjs';
@@ -89,11 +89,15 @@ function main() {
   const commandLineArguments = process.argv.slice(2);
   const decision = decideWhatToDo(commandLineArguments);
 
-  if (decision.whatToDo === WHAT_TO_DO.printUsage) {
-    out(USAGE);
-    // Asked for the usage, it is a success; shown the usage because nothing was asked of
-    // it, the command line was wrong.
-    process.exit(commandLineArguments.length === 0 ? EXIT_CODE.badCommandLine : EXIT_CODE.everythingPlaced);
+  // Shown the usage because nothing was asked of it, the command line was wrong; asked
+  // for the usage, it is a success. Which of the two texts to print follows from that.
+  if (decision.whatToDo === WHAT_TO_DO.printTheUsageInBrief) {
+    out(USAGE_IN_BRIEF);
+    process.exit(EXIT_CODE.badCommandLine);
+  }
+  if (decision.whatToDo === WHAT_TO_DO.printTheUsageInFull) {
+    out(USAGE_IN_FULL);
+    process.exit(EXIT_CODE.everythingPlaced);
   }
   if (decision.whatToDo === WHAT_TO_DO.printVersion) {
     out(readVersionFromPackageManifest());

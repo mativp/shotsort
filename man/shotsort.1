@@ -15,6 +15,18 @@ it replaces the camera's
 .I DCIM
 layout with one folder per shooting day.
 .PP
+Three commands cover nearly every use:
+.RS
+.nf
+.B shotsort \-n .
+\h'2n'see the plan, change nothing
+.B shotsort .
+\h'2n'sort the folder you are standing in
+.B shotsort \-s . \-d ~/Pictures/2026
+\h'2n'copy it into a library elsewhere
+.fi
+.RE
+.PP
 Files are copied, never moved, unless
 .B \-\-move
 is given, so that a mistaken run costs nothing but disk space.
@@ -28,8 +40,9 @@ A
 .I FOLDER
 must always be named:
 .B shotsort
-run with no arguments prints its options and sorts nothing, and it never falls
-back to the folder you are working in. Day folders are created at the top level
+run with no arguments prints a short version of its options and the commands
+above, and sorts nothing, and it never falls back to the folder you are working
+in. Day folders are created at the top level
 of the folder you name, or of
 .B \-\-dest
 when that is given, and the files are copied into them. Under
@@ -109,7 +122,13 @@ to
 .BR \-v ", " \-\-verbose
 Print every file as it is placed, as
 .RI \(lq source " \-> " destination \(rq.
-Files already in the right place are not printed.
+Files already in the right place are not printed. Nothing is placed under
+.BR \-\-dry\-run ,
+so the two together print no more than
+.B \-\-dry\-run
+alone;
+.B \-\-dry\-run \-\-json
+is the per\-file preview.
 .TP
 .BR \-q ", " \-\-quiet
 Print nothing but errors.
@@ -119,12 +138,17 @@ Print the plan and the result as JSON on standard output: every file with the
 folder chosen for it, the clock the date came from, and what was done, and a
 summary carrying everything the notes on standard error would have said:
 how many files were dated by the filesystem, how many were left undated, and
-how many names had to be split into numbered subfolders.
+how many names had to be split into numbered subfolders. With
+.B \-\-dry\-run
+this is the whole plan, file by file, before anything is written.
 .TP
 .BR \-h ", " \-\-help
-Print the usage text and exit, exactly as running
+Print the full manual \(em every option, how the date is found, what it reads
+\(em and exit. Run with no arguments,
 .B shotsort
-with no arguments does.
+prints a short version of it instead: the options in one line each, and the
+commands for previewing, copying and moving, both here and between two named
+folders.
 .TP
 .BR \-V ", " \-\-version
 Print the version and exit.
@@ -147,7 +171,7 @@ Some files were not placed, or none were found.
 .B 2
 The command line was wrong, naming no folder to sort included. Running
 .B shotsort
-with no arguments at all therefore prints the usage text and exits
+with no arguments at all therefore prints the short version and exits
 .BR 2 .
 .SH FILE TYPES
 Stills:
@@ -337,14 +361,28 @@ alone. Only folders that are already empty are removed, and never one named
 on the command line.
 .SH EXAMPLES
 .TP
-.B shotsort
-Print the options and sort nothing.
+.B shotsort \-n .
+Print the plan for the folder you are standing in, and write nothing. Start
+here: it is the same plan the real run would carry out.
 .TP
-.B shotsort \-n \-s ~/Import \-d ~/Pictures/2026
-Print what that would do, and do none of it.
+.B shotsort .
+Sort that folder in place. The day folders hold copies and the originals stay
+in
+.IR DCIM ,
+so the folder holds both.
+.TP
+.B shotsort \-m .
+The same, moving the files rather than copying them, so nothing is duplicated
+and the emptied
+.I DCIM
+folders are removed afterwards.
+.TP
+.B shotsort \-s . \-d ~/Pictures/2026
+Copy the folder you are standing in into a library elsewhere, leaving it
+exactly as it is.
 .TP
 .B shotsort \-s ~/Import \-d ~/Pictures/2026
-Read
+The same written out in full: read
 .I ~/Import
 and build the sorted day folders under
 .IR ~/Pictures/2026 ,
@@ -352,25 +390,36 @@ leaving
 .I ~/Import
 exactly as it came off the card. This is the usual way to run it.
 .TP
-.B shotsort ~/Import
-Sort it in place. The day folders hold copies and the originals stay in
-.IR DCIM ,
-so the folder briefly holds both.
+.B shotsort \-n \-s ~/Import \-d ~/Pictures/2026
+Print what that would do, and do none of it.
 .TP
-.B shotsort \-m ~/Import
-The same, moving the files rather than copying them, so nothing is duplicated
-and the emptied
-.I DCIM
-folders are removed afterwards.
+.B shotsort \-s ~/CardA \-s ~/CardB \-d ~/Pictures/2026
+Sort two cards in one pass, so a raw on one card and its JPEG on the other are
+recognised as the same shot.
 .TP
-.B shotsort .
-Sort the folder you are standing in.
+.B shotsort \-n \-\-json .
+Print the whole plan as JSON, one record per file, for a script to read. This
+is the per\-file preview;
+.B \-v
+prints nothing under
+.BR \-n .
 .TP
 .B shotsort \-\-layout '%Y/%F' ~/Import
 Put a year level above the days.
 .TP
 .B shotsort \-\-day\-start 4 ~/Import
 Keep a shoot that ran past midnight in the day it began.
+.TP
+.B shotsort \-v \-m ~/Import
+Sort
+.IR ~/Import ,
+printing every file as it moves.
+.TP
+.B shotsort
+Print a short version of the options and these examples, and sort nothing.
+.TP
+.B shotsort \-\-help
+Print all of it: every option, how the date is found, and what it reads.
 .SH ENVIRONMENT
 .TP
 .B TZ

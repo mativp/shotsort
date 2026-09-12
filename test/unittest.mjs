@@ -596,10 +596,17 @@ function theCommandLineIsReadWithoutStartingAProcess() {
     decideWhatToDo(['--day-start', 'noon', '/card']).problem !== undefined);
   expect('naming no folder to sort is refused',
     decideWhatToDo(['-n']).problem.startsWith('name the folder to sort'));
-  expect('no arguments at all asks for the usage',
-    decideWhatToDo([]).whatToDo === WHAT_TO_DO.printUsage);
-  expect('--help asks for the usage',
-    decideWhatToDo(['--help']).whatToDo === WHAT_TO_DO.printUsage);
+  expect('and the refusal shows how, leading with the folder you are standing in',
+    /^ {2}shotsort \. +the folder you are standing in$/m.test(decideWhatToDo(['-n']).problem)
+    && /^ {2}shotsort ~\/Import +a folder named in full$/m.test(decideWhatToDo(['-n']).problem),
+    decideWhatToDo(['-n']).problem);
+  expect('no arguments at all asks for the usage in brief',
+    decideWhatToDo([]).whatToDo === WHAT_TO_DO.printTheUsageInBrief);
+  expect('--help asks for the usage in full, which is a different text',
+    decideWhatToDo(['--help']).whatToDo === WHAT_TO_DO.printTheUsageInFull
+    && WHAT_TO_DO.printTheUsageInFull !== WHAT_TO_DO.printTheUsageInBrief);
+  expect('-h asks for the same full text as --help',
+    decideWhatToDo(['-h']).whatToDo === WHAT_TO_DO.printTheUsageInFull);
   expect('-V asks for the version',
     decideWhatToDo(['-V']).whatToDo === WHAT_TO_DO.printVersion);
   expect('a well formed command line comes back as something to sort',

@@ -11,18 +11,62 @@ export const EXIT_CODE = {
   badCommandLine: 2,
 };
 
-export const USAGE = `Usage: ${PROGRAM_NAME} [OPTION]... FOLDER...
+// What a bare invocation gets: enough to do the job today, and a pointer to the rest.
+// Someone who typed the name to see what it is should not have to read a manual to find
+// the one line they came for, so this stops at the three things anyone does with it --
+// look before leaping, copy, move -- said twice, once for here and once for elsewhere.
+export const USAGE_IN_BRIEF = `Usage: ${PROGRAM_NAME} [OPTION]... FOLDER...
+
+Sort photos and video into one folder per shooting day, using the date the
+camera recorded inside each file. Files are copied, never moved, unless you
+ask for --move.
+
+In the folder you are standing in:
+
+  ${PROGRAM_NAME} -n .          see the plan, change nothing
+  ${PROGRAM_NAME} .             copy every file into its day folder
+  ${PROGRAM_NAME} -m .          move it there instead
+
+From one folder into another:
+
+  ${PROGRAM_NAME} -n -s ~/Import -d ~/Pictures/2026    see that plan, change nothing
+  ${PROGRAM_NAME} -s ~/Import -d ~/Pictures/2026       copy, leaving ~/Import as it is
+  ${PROGRAM_NAME} -m ~/Import -d ~/Pictures/2026       move, emptying ~/Import
+
+  -s, --source FOLDER   the folder to sort, the same as naming it plainly
+  -d, --dest FOLDER     where the day folders go, the source folder by default
+  -n, --dry-run         print the plan and change nothing
+  -m, --move            move the files rather than copying them
+  -v, --verbose         print every file as it is placed
+  -q, --quiet           print nothing but errors
+      --json            print the plan and the result as JSON
+  -V, --version         print the version and exit
+  -h, --help            the rest: --layout, --day-start, the two
+                        filesystem-date options, how the date is found, what
+                        it reads, and the exit status
+
+A FOLDER always has to be named. Run with no arguments ${PROGRAM_NAME} prints this
+and sorts nothing, and it never falls back to the folder you are standing in.
+`;
+
+export const USAGE_IN_FULL = `Usage: ${PROGRAM_NAME} [OPTION]... FOLDER...
 
 Sort photos and video into one folder per shooting day, using the date the
 camera recorded inside each file. Files are copied, never moved, unless you
 ask for --move, so the originals survive a mistake.
 
+Three commands cover nearly every use:
+
+  ${PROGRAM_NAME} -n .                        see the plan, change nothing
+  ${PROGRAM_NAME} .                           sort the folder you are standing in
+  ${PROGRAM_NAME} -s . -d ~/Pictures/2026     copy it into a library elsewhere
+
 Every file is examined and its destination decided before anything is written,
 so nothing moves until the whole plan is settled. --dry-run prints that plan.
 
 The FOLDER to sort always has to be named: ${PROGRAM_NAME} run with no arguments
-prints this text and sorts nothing, and it never falls back to the folder you
-happen to be standing in.
+prints a short version of this text and sorts nothing, and it never falls back
+to the folder you happen to be standing in.
 
   -s, --source FOLDER   the folder to sort. The same as naming it without a
                         flag, and worth spelling out whenever --dest is used
@@ -80,13 +124,19 @@ These two settle it by hand instead:
 
   -v, --verbose         print every file as it is placed, as
                         "source -> destination". Files already in the right
-                        place are not printed
+                        place are not printed. Nothing is placed under
+                        --dry-run, so the two together print no more than
+                        --dry-run alone; --dry-run --json is the per-file
+                        preview
   -q, --quiet           print nothing but errors
       --json            print the plan and the result as JSON on standard
                         output: every file with the folder chosen for it, the
-                        clock the date came from, and what was done
-  -h, --help            print this text and exit, exactly as running
-                        ${PROGRAM_NAME} with no arguments does
+                        clock the date came from, and what was done, and a
+                        summary carrying everything the notes on standard
+                        error would have said. With --dry-run this is the
+                        whole plan, file by file, before anything is written
+  -h, --help            print this text and exit. Run with no arguments,
+                        ${PROGRAM_NAME} prints a short version of it instead
   -V, --version         print the version and exit
 
 Short options may be run together: -nv is -n -v. A -- argument ends option
@@ -110,27 +160,41 @@ Exit status:
   ${EXIT_CODE.everythingPlaced}   every file was placed
   ${EXIT_CODE.somethingFailedOrNothingFound}   some files were not placed, or none were found
   ${EXIT_CODE.badCommandLine}   the command line was wrong, naming no folder to sort included, so
-      running ${PROGRAM_NAME} with no arguments at all prints this text and exits ${EXIT_CODE.badCommandLine}
+      running ${PROGRAM_NAME} with no arguments at all prints the short version and
+      exits ${EXIT_CODE.badCommandLine}
 
 Examples:
+  ${PROGRAM_NAME} -n .
+        Print the plan for the folder you are standing in, and write nothing.
+        Start here: it is the same plan the real run would carry out.
+
+  ${PROGRAM_NAME} .
+        Sort that folder in place. Day folders appear inside it holding
+        copies, and the originals stay in DCIM, so the folder holds both.
+
+  ${PROGRAM_NAME} -m .
+        The same, moving the files rather than copying them, so nothing is
+        duplicated and the emptied DCIM folders are removed afterwards.
+
+  ${PROGRAM_NAME} -s . -d ~/Pictures/2026
+        Copy the folder you are standing in into a library elsewhere, leaving
+        it exactly as it is.
+
   ${PROGRAM_NAME} -s ~/Import -d ~/Pictures/2026
-        Read ~/Import and build the sorted day folders under ~/Pictures/2026,
-        leaving ~/Import exactly as it came off the card. This is the usual
-        way to run it.
+        The same written out in full: read ~/Import, build the sorted day
+        folders under ~/Pictures/2026, leave ~/Import as it came off the card.
+        This is the usual way to run it.
 
   ${PROGRAM_NAME} -n -s ~/Import -d ~/Pictures/2026
         Print what that would do, and do none of it.
 
-  ${PROGRAM_NAME} ~/Import
-        Sort ~/Import in place. Day folders appear inside it holding copies,
-        and the originals stay in DCIM, so the folder briefly holds both.
+  ${PROGRAM_NAME} -s ~/CardA -s ~/CardB -d ~/Pictures/2026
+        Sort two cards in one pass, so a raw on one card and its JPEG on the
+        other are recognised as the same shot.
 
-  ${PROGRAM_NAME} -m ~/Import
-        The same, moving the files rather than copying them, so nothing is
-        duplicated and the emptied DCIM folders are removed afterwards.
-
-  ${PROGRAM_NAME} .
-        Sort the folder you are standing in.
+  ${PROGRAM_NAME} -n --json .
+        Print the whole plan as JSON, one record per file, for a script to
+        read. This is the per-file preview; -v prints nothing under -n.
 
   ${PROGRAM_NAME} --layout '%Y/%F' ~/Import
         Sort ~/Import into 2026/2026-08-27 rather than 2026-08-27.

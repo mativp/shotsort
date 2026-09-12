@@ -884,6 +884,8 @@ function theCommandLineItself() {
     refusedFor(['--verbose', '--quiet', emptyFolder]));
   expect('giving options but naming no folder says so',
     /name the folder to sort/.test(refusedFor(['-n'])), refusedFor(['-n']));
+  expect("and shows '.' for the folder you are standing in, which has to be named like any other",
+    /^ {2}shotsort \. +the folder you are standing in$/m.test(refusedFor(['-n'])), refusedFor(['-n']));
 
   const versionFromManifest = JSON.parse(
     fs.readFileSync(path.join(testDirectory, '..', 'package.json'), 'utf8')).version;
@@ -912,17 +914,38 @@ function theCommandLineItself() {
   const bareInvocation = runCommand([], { cwd: cardDumpItShouldNotTouch });
   const askedForHelp = runCommand(['--help']);
 
-  expect('running it with no arguments prints the usage on standard output',
+  expect('running it with no arguments prints the brief on standard output',
     bareInvocation.standardOutput.startsWith('Usage: shotsort') && bareInvocation.standardError === '',
     bareInvocation.standardOutput.slice(0, 120) + bareInvocation.standardError);
-  expect('that usage lists the options and worked examples',
-    (bareInvocation.standardOutput.match(/^ {2,6}-/gm) ?? []).length >= 9
-    && bareInvocation.standardOutput.includes('Examples:')
-    && bareInvocation.standardOutput.includes('Exit status:'));
+  // What someone who typed the name came for: the three things anyone does with it, said
+  // for the folder they are in and for one named somewhere else.
+  const shownInTheBrief = (command) => new RegExp(`^ +${command.replace(/[.\\/-]/g, '\\$&')} *(?: |$)`, 'm')
+    .test(bareInvocation.standardOutput);
+  expect('the brief shows previewing, copying and moving, both here and between two folders',
+    ['shotsort -n .', 'shotsort .', 'shotsort -m .',
+      'shotsort -n -s ~/Import -d ~/Pictures/2026',
+      'shotsort -s ~/Import -d ~/Pictures/2026',
+      'shotsort -m ~/Import -d ~/Pictures/2026'].every(shownInTheBrief),
+    bareInvocation.standardOutput);
+  expect('and it is brief: no manual, and it says where the manual is',
+    !bareInvocation.standardOutput.includes('Exit status:')
+    && bareInvocation.standardOutput.length < askedForHelp.standardOutput.length / 2
+    && /--help/.test(bareInvocation.standardOutput),
+    `${bareInvocation.standardOutput.length} against ${askedForHelp.standardOutput.length}`);
+  // A brief that named an option the full text did not would be the two drifting apart.
+  const optionsNamedIn = (text) => new Set(text.match(/(?<![-\w])--[a-z][a-z-]+/g) ?? []);
+  const optionsInTheFullText = optionsNamedIn(askedForHelp.standardOutput);
+  const onlyInTheBrief = [...optionsNamedIn(bareInvocation.standardOutput)]
+    .filter((option) => !optionsInTheFullText.has(option));
+  expect('every option the brief names is in the full text too',
+    onlyInTheBrief.length === 0, onlyInTheBrief.join(', '));
   expect('running it with no arguments exits 2, having been asked to do nothing',
     bareInvocation.exitCode === EXIT_BAD_COMMAND_LINE, String(bareInvocation.exitCode));
-  expect('--help prints exactly the same text but exits 0, having been asked for it',
-    askedForHelp.standardOutput === bareInvocation.standardOutput
+  expect('--help prints the whole manual instead, and exits 0, having been asked for it',
+    askedForHelp.standardOutput !== bareInvocation.standardOutput
+    && (askedForHelp.standardOutput.match(/^ {2,6}-/gm) ?? []).length >= 9
+    && askedForHelp.standardOutput.includes('Examples:')
+    && askedForHelp.standardOutput.includes('Exit status:')
     && askedForHelp.exitCode === EXIT_EVERYTHING_PLACED);
   expect('and sorts nothing in the folder it was run from',
     fs.existsSync(path.join(cardDumpItShouldNotTouch, 'DCIM/100_PANA/P1000001.JPG')));
