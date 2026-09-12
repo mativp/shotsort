@@ -1,6 +1,6 @@
 {
   "name": "shotsort",
-  "version": "1.0.0-alpha",
+  "version": "1.0.0",
   "description": "Sort a folder of camera photos and video into one folder per shooting day, using the date inside each file.",
   "type": "module",
   "bin": {
