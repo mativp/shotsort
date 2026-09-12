@@ -116,7 +116,10 @@ Print nothing but errors.
 .TP
 .B \-\-json
 Print the plan and the result as JSON on standard output: every file with the
-folder chosen for it, the clock the date came from, and what was done.
+folder chosen for it, the clock the date came from, and what was done, and a
+summary carrying everything the notes on standard error would have said:
+how many files were dated by the filesystem, how many were left undated, and
+how many names had to be split into numbered subfolders.
 .TP
 .BR \-h ", " \-\-help
 Print the usage text and exit, exactly as running

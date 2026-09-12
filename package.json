@@ -8,6 +8,7 @@
   },
   "files": [
     "bin",
+    "cli",
     "src",
     "man",
     "LICENSE"
@@ -16,8 +17,12 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node test/selftest.mjs",
-    "prepublishOnly": "npm test"
+    "test": "node test/unittest.mjs && node test/selftest.mjs",
+    "test:unit": "node test/unittest.mjs",
+    "test:end-to-end": "node test/selftest.mjs",
+    "lint": "eslint .",
+    "coverage": "node --experimental-test-coverage --test test/coverage.mjs",
+    "prepublishOnly": "npm run lint && npm test"
   },
   "keywords": [
     "photo",
@@ -40,5 +45,8 @@
   "bugs": "https://github.com/mativp/shotsort/issues",
   "man": [
     "man/shotsort.1"
-  ]
+  ],
+  "devDependencies": {
+    "eslint": "^10.10.0"
+  }
 }

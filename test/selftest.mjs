@@ -14,9 +14,19 @@ import {
   movieFileSayingWhichZoneItsClockIsIn, movieFileCarryingACanonThumbnail, movieFileWithAnAppleCreationDate,
   minoltaRawFile, canonCiffRawFile, sigmaRawFile,
 } from './fixtures.mjs';
-import { readTimestampFromFile } from '../src/date.mjs';
-import { PLACEMENT, FILESYSTEM_DATE_USE, UNDATED_FOLDER_NAME } from '../src/sort.mjs';
-import { DATE_SOURCE } from '../src/date.mjs';
+import { readCameraClockFromFile } from '../src/formats/registry.mjs';
+import { formatCameraClock } from '../src/clock.mjs';
+import { PLACEMENT, UNDATED_FOLDER_NAME } from '../src/plan.mjs';
+import { FILESYSTEM_DATE_USE } from '../src/dating.mjs';
+import { DATE_SOURCE } from '../src/dateSource.mjs';
+
+// The parsers answer with a camera clock record now; these checks still read as the
+// stamp a camera would have written, so they go on comparing the text of one.
+const clockTextOf = (filePath) => {
+  const found = readCameraClockFromFile(filePath, fs.statSync(filePath).size);
+  return found === null ? null : formatCameraClock(found.clock);
+};
+const clockFoundIn = (filePath) => readCameraClockFromFile(filePath, fs.statSync(filePath).size);
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const COMMAND = path.join(testDirectory, '..', 'bin', 'shotsort.mjs');
@@ -48,6 +58,17 @@ function filesUnder(directory) {
       ? walk(path.join(currentDirectory, directoryEntry.name), `${pathSoFar}${directoryEntry.name}/`)
       : [`${pathSoFar}${directoryEntry.name}`]));
   return walk(directory, '').sort();
+}
+
+// The enum check walks the tree rather than naming files, so moving a module cannot
+// quietly take it out of the check's reach.
+function everySourceFileUnder(projectRoot) {
+  const walk = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((directoryEntry) => {
+    const relativePath = path.relative(projectRoot, path.join(directory, directoryEntry.name));
+    if (directoryEntry.isDirectory()) return walk(path.join(directory, directoryEntry.name));
+    return directoryEntry.name.endsWith('.mjs') ? [relativePath] : [];
+  });
+  return ['bin', 'cli', 'src'].flatMap((topLevel) => walk(path.join(projectRoot, topLevel)));
 }
 
 const visibleFilesUnder = (directory) => filesUnder(directory).filter((filePath) => !filePath.startsWith('.'));
@@ -204,13 +225,13 @@ function containersThatAreLegalButUnusual() {
   const dateOf = (fileName, contents) => {
     const filePath = path.join(dump, fileName);
     writeFixtureFile(filePath, contents);
-    return readTimestampFromFile(filePath, fs.statSync(filePath).size);
+    return clockFoundIn(filePath);
   };
 
   expect('a jpeg whose first marker carries no length is still read',
-    dateOf('restart.jpg', jpegFileWithARestartMarkerFirst('2026:07:04 08:00:00'))?.timestamp === '2026-07-04 08:00:00');
+    formatCameraClock(dateOf('restart.jpg', jpegFileWithARestartMarkerFirst('2026:07:04 08:00:00')).clock) === '2026-07-04 08:00:00');
   expect('a movie box declaring that it runs to the end of the file is still read',
-    dateOf('to-the-end.mp4', movieFileWhoseMovieBoxRunsToTheEnd('2026-07-04 10:00:00'))?.timestamp === '2026-07-04 10:00:00');
+    formatCameraClock(dateOf('to-the-end.mp4', movieFileWhoseMovieBoxRunsToTheEnd('2026-07-04 10:00:00')).clock) === '2026-07-04 10:00:00');
   expect('a jpeg hiding its exif behind more segments than are worth walking gives up rather than hanging',
     dateOf('buried.jpg', jpegFileBuriedUnderManySegments('2026:07:04 09:00:00')) === null);
 
@@ -218,7 +239,7 @@ function containersThatAreLegalButUnusual() {
   writeFixtureFile(unreadable, jpegFile('2026:07:04 11:00:00'));
   fs.chmodSync(unreadable, 0o000);
   expect('a file that cannot be opened reports no date rather than throwing',
-    readTimestampFromFile(unreadable, fs.statSync(unreadable).size) === null);
+    clockFoundIn(unreadable) === null);
   fs.chmodSync(unreadable, 0o644);
 }
 
@@ -227,7 +248,7 @@ function theRawEveryMakerWrites() {
   const dateOf = (fileName, contents) => {
     const filePath = path.join(dump, fileName);
     writeFixtureFile(filePath, contents);
-    return readTimestampFromFile(filePath, fs.statSync(filePath).size)?.timestamp ?? null;
+    return clockTextOf(filePath);
   };
   const ordinaryTiff = (dateTimeOriginal) => tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal });
   const olympusRaw = (signature, dateTimeOriginal) => tiffFile({ signature, dateTimeOriginal });
@@ -291,7 +312,7 @@ function theContainersThatHoldTheirExifSomewhereElse() {
   const dateOf = (fileName, contents) => {
     const filePath = path.join(dump, fileName);
     writeFixtureFile(filePath, contents);
-    return readTimestampFromFile(filePath, fs.statSync(filePath).size)?.timestamp ?? null;
+    return clockTextOf(filePath);
   };
   const shotAt = '2026:08:27 09:07:01';
   const whenItWasShot = '2026-08-27 09:07:01';
@@ -325,7 +346,7 @@ function theRawFormatsThatPredateTiff() {
   const dateOf = (fileName, contents) => {
     const filePath = path.join(dump, fileName);
     writeFixtureFile(filePath, contents);
-    return readTimestampFromFile(filePath, fs.statSync(filePath).size)?.timestamp ?? null;
+    return clockTextOf(filePath);
   };
   const whenItWasShot = '2026-08-27 09:07:01';
 
@@ -351,7 +372,7 @@ function videoFiledByTheClockTheCameraWasSetTo() {
   const dateOf = (fileName, contents) => {
     const filePath = path.join(dump, fileName);
     writeFixtureFile(filePath, contents);
-    return readTimestampFromFile(filePath, fs.statSync(filePath).size)?.timestamp ?? null;
+    return clockTextOf(filePath);
   };
   const theClockOnTheCamera = '2026-08-27 09:07:01';
   const theSameMomentInUtc = '2026-08-27 07:07:01';
@@ -655,10 +676,10 @@ function foldersTheWalkMustNotEnter() {
   writeFixtureFile(path.join(dump, 'holiday.', 'TAKEN.JPG'), jpegFile(shot));
 
   runCommand(['--move', dump]);
-  const sorted = filesUnder(dump).filter((f) => f.startsWith('2026-'));
+  const sorted = filesUnder(dump).filter((sortedPath) => sortedPath.startsWith('2026-'));
 
   expect('a system folder is skipped even when its name does not start with a dot',
-    !sorted.some((f) => f.endsWith('IGNORED.JPG')), JSON.stringify(sorted));
+    !sorted.some((sortedPath) => sortedPath.endsWith('IGNORED.JPG')), JSON.stringify(sorted));
   expect('every one of those folders keeps its own file where it was',
     ['.Spotlight-V100', '.Trashes', 'System Volume Information', '$RECYCLE.BIN']
       .every((skipped) => fs.existsSync(path.join(dump, skipped, 'IGNORED.JPG'))));
@@ -730,7 +751,7 @@ function matchingTheShotWhateverTheCase() {
 function theEdgeOfTrustingTheFilesystem() {
   const dayOfTheShoot = '2026:04:06 12:00:00';
   const newestShot = new Date('2026-04-06T12:00:00').getTime();
-  const hours = (n) => new Date(newestShot + n * 60 * 60 * 1000);
+  const hours = (howMany) => new Date(newestShot + howMany * 60 * 60 * 1000);
 
   const dumpFor = (name, stampedAt) => {
     const dump = fs.mkdtempSync(path.join(temporaryDirectory, `${name}-`));
@@ -741,7 +762,7 @@ function theEdgeOfTrustingTheFilesystem() {
   };
 
   expect('a filesystem date 36 hours after the newest shot is still trusted',
-    dumpFor('edge-in', hours(36)).some((f) => /^2026-04-0[78]\/UNDATED\.HSP$/.test(f)),
+    dumpFor('edge-in', hours(36)).some((sortedPath) => /^2026-04-0[78]\/UNDATED\.HSP$/.test(sortedPath)),
     JSON.stringify(dumpFor('edge-in2', hours(36))));
   expect('one minute past that it is treated as the moment of a copy',
     dumpFor('edge-out', new Date(newestShot + 36 * 60 * 60 * 1000 + 60000))
@@ -874,7 +895,7 @@ function theCommandLineItself() {
 function everyEnumMemberTheCodeRefersToExists() {
   const enumsByName = { PLACEMENT, FILESYSTEM_DATE_USE, DATE_SOURCE };
   const projectRoot = path.join(testDirectory, '..');
-  const sourceFiles = ['bin/shotsort.mjs', 'src/sort.mjs', 'src/date.mjs'];
+  const sourceFiles = everySourceFileUnder(projectRoot);
   const referenceToAnEnumMember = /\b(PLACEMENT|FILESYSTEM_DATE_USE|DATE_SOURCE)\.([A-Za-z][A-Za-z0-9]*)/g;
   const referencesThatResolveToNothing = [];
 
@@ -890,8 +911,41 @@ function everyEnumMemberTheCodeRefersToExists() {
     referencesThatResolveToNothing.length === 0, referencesThatResolveToNothing.join('\n'));
 }
 
+// The refactor's whole point was that some modules decide things and others touch the
+// disk, and that the two sets do not overlap. A boundary nothing checks is a boundary that
+// drifts, so this is the check.
+function theModulesThatMustNotTouchTheDisk() {
+  const projectRoot = path.join(testDirectory, '..');
+  const mustStayPure = [
+    'src/clock.mjs', 'src/plan.mjs', 'src/dating.mjs', 'src/extensions.mjs', 'src/dateSource.mjs',
+    'cli/options.mjs', 'cli/report.mjs', 'cli/usage.mjs',
+    ...everySourceFileUnder(projectRoot).filter((relativePath) => relativePath.startsWith('src/formats/')),
+  ];
+  const reachesForTheDisk = /from 'node:fs'|require\('node:fs'\)|\bfs\./;
+
+  const impure = mustStayPure.filter((relativePath) => {
+    const sourceText = fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
+    // registry.mjs opens the file it was asked about; that is its whole job, and it does it
+    // through the one helper in bytes.mjs rather than reaching for fs itself.
+    return reachesForTheDisk.test(sourceText);
+  });
+  expect('the modules that decide things never touch the disk themselves',
+    impure.length === 0, `reach for fs: ${impure.join(', ')}`);
+
+  const onlyTheseMayUseFs = ['src/bytes.mjs', 'src/scan.mjs', 'src/apply.mjs', 'src/destination.mjs', 'bin/shotsort.mjs'];
+  const unexpected = everySourceFileUnder(projectRoot)
+    .filter((relativePath) => /from 'node:fs'/.test(fs.readFileSync(path.join(projectRoot, relativePath), 'utf8')))
+    .filter((relativePath) => !onlyTheseMayUseFs.includes(relativePath));
+  expect('and only the modules whose job is the disk import it at all',
+    unexpected.length === 0, `unexpectedly import fs: ${unexpected.join(', ')}`);
+
+  const planSource = fs.readFileSync(path.join(projectRoot, 'src', 'plan.mjs'), 'utf8');
+  expect('planning asks the disk nothing except through the probe it was handed',
+    /probe\.exists/.test(planSource) && /probe\.contentsMatch/.test(planSource) && !/existsSync/.test(planSource));
+}
+
 function theDocumentationSaysTheSameAsTheProgram() {
-  const programSource = fs.readFileSync(COMMAND, 'utf8');
+  const programSource = fs.readFileSync(path.join(testDirectory, '..', 'cli', 'options.mjs'), 'utf8');
   const longOptions = [...programSource.matchAll(/optionName === '(--[a-z-]+)'/g)].map(([, option]) => option);
   const shortOptions = [...programSource.matchAll(/letter === '([a-zA-Z0-9])'/g)].map(([, letter]) => `-${letter}`);
   const everyOption = [...new Set([...longOptions, ...shortOptions])];
@@ -972,6 +1026,7 @@ function theDocumentationSaysTheSameAsTheProgram() {
 }
 
 everyEnumMemberTheCodeRefersToExists();
+theModulesThatMustNotTouchTheDisk();
 theDocumentationSaysTheSameAsTheProgram();
 sortingACardDumpInPlace();
 twoPhotosOnOneDaySharingAName();

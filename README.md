@@ -119,7 +119,7 @@ sometimes worthless and how `shotsort` tells the difference.
 |---|---|
 | `-v`, `--verbose` | Print every file as it is placed, as `source -> destination`. Files already in the right place are not printed. |
 | `-q`, `--quiet` | Print nothing but errors. |
-| `--json` | Print the plan and the result as JSON on standard output: every file with the folder chosen for it, the clock the date came from, and what was done. |
+| `--json` | Print the plan and the result as JSON on standard output: every file with the folder chosen for it, the clock the date came from, and what was done, and a summary carrying everything the notes on standard error would have said. |
 
 ### Help
 
@@ -250,10 +250,21 @@ you named.
 ## Test
 
 ```sh
-npm test
+npm test          # both suites
+npm run lint      # eslint
+npm run coverage  # both suites under Node's coverage reporter
 ```
 
-Builds a synthetic card dump — raw/JPEG pairs, a raw recording no date, a raw
-dated only by the JPEG it embeds, clips either side of midnight, AVCHD outside
-DCIM, a name collision between card folders — and checks where every file
-lands.
+Two suites, no test framework:
+
+`test/unittest.mjs` runs without a filesystem. Format readers are handed a
+`Buffer` and the planner a stub that answers "does this path exist" and "are
+these the same photo" from a plain object, so a plan can be checked for what it
+decided rather than for the files it left behind.
+
+`test/selftest.mjs` is end to end. It builds a synthetic card dump — raw/JPEG
+pairs, a raw recording no date, a raw dated only by the JPEG it embeds, clips
+either side of midnight, AVCHD outside DCIM, a name collision between card
+folders — runs the real command against it, and checks where every file lands.
+It also checks that `--help`, the man page and this README agree on every
+option, and that the modules which decide things never import `node:fs`.

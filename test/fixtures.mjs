@@ -299,8 +299,8 @@ const EXIF_ITEM_ID = 1;
 const HEIF_EXIF_PAYLOAD_SKIPPING_THE_MARKER = 6;
 const OFFSET_AND_LENGTH_BOTH_FOUR_BYTES_WIDE = 0x44;
 
-const bigEndianUInt16 = (value) => { const b = Buffer.alloc(2); b.writeUInt16BE(value, 0); return b; };
-const bigEndianUInt32 = (value) => { const b = Buffer.alloc(4); b.writeUInt32BE(value, 0); return b; };
+const bigEndianUInt16 = (value) => { const bytes = Buffer.alloc(2); bytes.writeUInt16BE(value, 0); return bytes; };
+const bigEndianUInt32 = (value) => { const bytes = Buffer.alloc(4); bytes.writeUInt32BE(value, 0); return bytes; };
 
 function isoFullBox(boxType, version, body) {
   return isoBox(boxType, Buffer.concat([Buffer.from([version, 0, 0, 0]), body]));
@@ -319,11 +319,15 @@ export function tiffFileWithTheDateInItsMainDirectory(dateTag, dateTimeOriginal)
 }
 
 export function bigTiffFile(dateTimeOriginal, { bigEndian = false } = {}) {
-  const uInt16 = (value) => { const b = Buffer.alloc(2); bigEndian ? b.writeUInt16BE(value) : b.writeUInt16LE(value); return b; };
+  const uInt16 = (value) => {
+    const bytes = Buffer.alloc(2);
+    if (bigEndian) bytes.writeUInt16BE(value); else bytes.writeUInt16LE(value);
+    return bytes;
+  };
   const uInt64 = (value) => {
-    const b = Buffer.alloc(8);
-    if (bigEndian) b.writeBigUInt64BE(BigInt(value)); else b.writeBigUInt64LE(BigInt(value));
-    return b;
+    const bytes = Buffer.alloc(8);
+    if (bigEndian) bytes.writeBigUInt64BE(BigInt(value)); else bytes.writeBigUInt64LE(BigInt(value));
+    return bytes;
   };
   const entry = (tag, valueType, valueCount, valueOrOffset) =>
     Buffer.concat([uInt16(tag), uInt16(valueType), uInt64(valueCount), uInt64(valueOrOffset)]);
@@ -439,7 +443,6 @@ export function movieFileWithAnAppleCreationDate(mvhdClock, spelledOutDate) {
   return movieFile(mvhdClock, { extraMovieBoxes: metadata });
 }
 
-const SECONDS_BETWEEN_1970_AND_1904 = 2082844800;
 const CIFF_HEADER_BYTES = 26;
 const CIFF_TAG_CAPTURE_TIME = 0x180e;
 const CIFF_TAG_IMAGE_PROPERTIES = 0x2807;
@@ -466,7 +469,7 @@ export function minoltaRawFile(dateTimeOriginal) {
   const whiteBalance = minoltaBlock('\0WBG', Buffer.alloc(16, 4));
   const body = Buffer.concat([thumbnail, exifBlock, whiteBalance]);
   return Buffer.concat([minoltaBlock('\0MRM', Buffer.alloc(0)).subarray(0, 4),
-    (() => { const b = Buffer.alloc(4); b.writeUInt32BE(body.length, 0); return b; })(),
+    bigEndianUInt32(body.length),
     body, Buffer.alloc(64, 5)]);
 }
 
