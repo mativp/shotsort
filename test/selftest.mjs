@@ -303,6 +303,8 @@ function theFormatsThatAreBuiltSomeOtherWay() {
     ['a windows media clip', 'CLIP0106.WMV', windowsMediaMovie('2026-08-27 10:07:00'), '2026-08-27 10:07:00'],
     ['a tape camcorder clip', 'CLIP0107.DV', digitalVideoClip('2026-08-27 10:08:00'), '2026-08-27 10:08:00'],
     ['a cinema camera take', 'A001_C001.R3D', redcodeClip('2026-08-27 10:10:00'), '2026-08-27 10:10:00'],
+    ['a cinema camera take whose header does not say where its directory is', 'A001_C002.R3D',
+      redcodeClip('2026-08-27 10:11:00', { headerSaysWhereTheDirectoryIs: false }), '2026-08-27 10:11:00'],
     ['a png dated only by when it was written', 'export.PNG', pngStillDatedOnlyByWhenItWasLastWritten('2026-08-27 10:09:00'), '2026-08-27 10:09:00'],
   ];
   for (const [whatItIs, fileName, contents, whenItWasShot] of eachOne) {

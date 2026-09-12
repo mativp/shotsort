@@ -846,7 +846,7 @@ function redcodeRecord(recordNumber, value) {
   return Buffer.concat([header, value]);
 }
 
-export function redcodeClip(cameraClock) {
+export function redcodeClip(cameraClock, { headerSaysWhereTheDirectoryIs = true } = {}) {
   const [year, month, day, hour, minute, second] = cameraClock.split(/[-: ]/).map(Number);
   const twoDigits = (number) => String(number).padStart(2, '0');
   const runOfDigits = `${year}${twoDigits(month)}${twoDigits(day)}${twoDigits(hour)}${twoDigits(minute)}${twoDigits(second)}`;
@@ -855,9 +855,14 @@ export function redcodeClip(cameraClock) {
     redcodeRecord(REDCODE_FIRST_TIMECODE_RECORD, Buffer.alloc(BYTES_IN_A_REDCODE_TIMECODE)),
     redcodeRecord(REDCODE_WHEN_IT_WAS_SHOT_RECORD, Buffer.from(`${runOfDigits}\0`, 'latin1')),
   ];
-  const soFar = records.reduce((total, record) => total + record.length, 0);
-  const padding = SHORTEST_REDCODE_DIRECTORY_WORTH_TRUSTING - soFar;
-  records.push(redcodeRecord(REDCODE_FILLER_RECORD, Buffer.alloc(padding - BYTES_IN_A_REDCODE_RECORD_HEADER)));
+  // A directory shorter than the length worth trusting is what a camera whose header
+  // arithmetic does not hold looks like: the reader has to find the directory by looking
+  // for the record that begins it rather than by counting to it.
+  if (headerSaysWhereTheDirectoryIs) {
+    const soFar = records.reduce((total, record) => total + record.length, 0);
+    const padding = SHORTEST_REDCODE_DIRECTORY_WORTH_TRUSTING - soFar;
+    records.push(redcodeRecord(REDCODE_FILLER_RECORD, Buffer.alloc(padding - BYTES_IN_A_REDCODE_RECORD_HEADER)));
+  }
 
   const directory = Buffer.concat(records);
   const howLongTheDirectoryIs = Buffer.alloc(2);

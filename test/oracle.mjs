@@ -107,6 +107,8 @@ const fixtureFiles = () => [
   ['windows-media.WMV', fixtures.windowsMediaMovie(WHEN_SPELLED_OUT_WITH_DASHES)],
   ['digital-video.DV', fixtures.digitalVideoClip(WHEN_SPELLED_OUT_WITH_DASHES)],
   ['redcode.R3D', fixtures.redcodeClip(WHEN_SPELLED_OUT_WITH_DASHES)],
+  ['redcode-whose-header-does-not-say-where-the-directory-is.R3D',
+    fixtures.redcodeClip(WHEN_SPELLED_OUT_WITH_DASHES, { headerSaysWhereTheDirectoryIs: false })],
 ];
 
 const exiftoolIsInstalled = () => spawnSync('exiftool', ['-ver'], { encoding: 'utf8' }).status === 0;
