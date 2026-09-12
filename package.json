@@ -44,6 +44,7 @@
   },
   "homepage": "https://github.com/mativp/shotsort#readme",
   "bugs": "https://github.com/mativp/shotsort/issues",
+  "funding": "https://buymeacoffee.com/mativp",
   "man": [
     "man/shotsort.1"
   ],

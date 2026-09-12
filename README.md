@@ -292,3 +292,8 @@ fixture that exercises it can share one misunderstanding of a format and agree
 with each other forever; exiftool was written from real files, so putting the
 fixture to it stops that. Three fixtures are recorded as reading differently on
 purpose, each with the reason.
+
+## Buy me a coffee
+
+`shotsort` is free and always will be. If it saved you an afternoon of dragging
+folders around, [buy me a coffee](https://buymeacoffee.com/mativp).
