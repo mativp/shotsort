@@ -8,6 +8,13 @@
 Sort a folder of camera files into one folder per shooting day, using the date
 the camera wrote inside each file. No dependencies, no exiftool.
 
+## Buy me a coffee
+
+`shotsort` is free and always will be. If it saved you an afternoon of dragging
+folders around, buy me a coffee.
+
+<a href="https://buymeacoffee.com/mativp"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="48"></a>
+
 ## Install
 
 ```sh
@@ -236,76 +243,52 @@ duplicate rather than a clash, so they collapse into one file.
 
 ## What it reads
 
-Stills: JPEG, JPE, JPS, MPO, INSP, TIFF, BTF, PNG, APNG, WEBP, JXL, HSP, HIF,
-HEIC, HEIF, AVIF, and Canon THM sidecars.
-Raw: RW2, RAW, RWL (Panasonic), CR2, CR3, CRM, CRW (Canon), NEF, NRW (Nikon),
-ARW, ARQ, SR2, SRF (Sony), ORF, ORI (Olympus, OM System), RAF (Fujifilm), PEF
-(Pentax), MRW (Minolta), X3F (Sigma), SRW, ERF, 3FR, FFF, IIQ, MOS, MEF, DCR,
-KDC, K25, GPR, JXR, HDP, WDP, and DNG from anyone.
-Video: MP4, MOV, QT, M4V, MQV, 3GP, 3GPP, 3G2, 3GP2, MTS, M2TS, M2T, AVI, MKV,
-WEBM, WMV, ASF, DIVX, MPG, MPEG, M2V, VOB, DV, F4V, R3D, and the LRV, LRF, GLV,
-INSV and 360 clips action cameras and drones write.
+**Stills** — JPEG, JPE, JPS, MPO, INSP, TIFF, BTF, PNG, APNG, WEBP, JXL, HSP,
+HIF, HEIC, HEIF, AVIF, and Canon THM sidecars.
 
-The extension decides only which files are picked up; which parser runs is
-decided by the file's leading bytes, so a mislabelled file still reads
-correctly.
+**Raw** — RW2, RAW, RWL (Panasonic), CR2, CR3, CRM, CRW (Canon), NEF, NRW
+(Nikon), ARW, ARQ, SR2, SRF (Sony), ORF, ORI (Olympus, OM System), RAF
+(Fujifilm), PEF (Pentax), MRW (Minolta), X3F (Sigma), SRW, ERF, 3FR, FFF, IIQ,
+MOS, MEF, DCR, KDC, K25, GPR, JXR, HDP, WDP, and DNG from anyone.
 
-Most of those raws are a TIFF container and one parser reads them all. The
-number after the byte order mark is not checked against a list of makers: every
-maker who dressed a raw up as a TIFF chose their own, so a list of the ones
-known today is a list that leaves tomorrow's raw undated. BigTIFF widens every
-count and offset from four bytes to eight, and a pointer inside one is read at
-the width its own type declares rather than at the file's offset width.
+**Video** — MP4, MOV, QT, M4V, MQV, 3GP, 3GPP, 3G2, 3GP2, MTS, M2TS, M2T, AVI,
+MKV, WEBM, WMV, ASF, DIVX, MPG, MPEG, M2V, VOB, DV, F4V, R3D, and the LRV, LRF,
+GLV, INSV and 360 clips action cameras and drones write.
 
-Six formats wrap a TIFF block somewhere else and hand it to that same parser:
-Canon CR3 and CRM bury one in `moov/uuid/CMT2`, HEIF and AVIF store one as an
-item the `meta` box points at, JPEG XL puts one in a top-level `Exif` box, PNG
-in an `eXIf` chunk, WebP in an `EXIF` chunk, Fujifilm RAF gives the offset of a
-complete JPEG in bytes 84–87 of its header, and Minolta MRW wraps one in a
-`\0TTW` block.
+The extension decides only which files are picked up; the parser is chosen by
+the file's leading bytes, so a mislabelled file still reads correctly. No list
+of camera makers is consulted anywhere, so next year's raw reads today.
 
-The rest keep a date of their own making. Canon CRW holds a Unix timestamp in
-the CIFF heap its trailing pointer leads to and Sigma X3F keeps one as a `TIME`
-property in a UTF-16 property list; AVI writes the recording date out in words
-in an `IDIT` chunk; Matroska counts nanoseconds from 2001 and ASF counts
-ten-millionths of a second from 1601; DV writes the date and time as
-binary-coded decimal in the auxiliary packs of its first blocks; and Redcode
-keeps one run of digits in a numbered record. Every one of them is read as the
-camera's own clock and checked for a plausible year, so a misread yields no
-date rather than a wrong one.
+**Not dated:** AVCHD (`.MTS`, `.M2TS`, `.M2T`), MPEG program streams (`.MPG`,
+`.VOB`, `.M2V`) and HLG photos (`.HSP`) record no date this or exiftool can
+read, so they fall through to a sibling or the filesystem. `.TS` is not picked
+up at all: no date either way, and a folder of TypeScript is the likelier
+meaning.
 
-**Not read:** AVCHD clips (`.MTS`, `.M2TS`, `.M2T`), MPEG program streams
-(`.MPG`, `.VOB`, `.M2V`) and HLG photos (`.HSP`) store no date this or exiftool
-can read, so they are placed from a sibling or the filesystem. `.TS` is not
-picked up at all, despite being the same transport stream as `.MTS`: it holds
-no date either way, and a folder of TypeScript is the likelier meaning.
+The date is the first of these to answer:
 
-The date comes from the first of these that answers:
+1. **EXIF** `DateTimeOriginal` / `CreateDate` / `ModifyDate`, wherever the file
+   hides it — plain, in the JPEG inside a raw, or in the TIFF block that a CR3,
+   HEIF, AVIF, JXL, PNG, WebP, RAF or MRW wraps somewhere of its own.
+2. **The format's own clock**, for the CRW, X3F, AVI, Matroska, ASF, DV and
+   Redcode files that keep a date of their own making. Each is read as the
+   camera's clock and checked for a plausible year, so a misread gives no date
+   rather than a wrong one.
+3. **A video clock, the one naming its timezone first** — Canon and Nikon's
+   `©day`, Apple's `com.apple.quicktime.creationdate`, the EXIF in Canon's
+   thumbnail. Its local time is kept and the offset discarded, that being what
+   the photographer saw on the back of the camera. Failing that, `moov/mvhd`
+   verbatim, where Panasonic writes the camera's clock already.
+4. **The other format of the same shot** — the JPEG beside a raw, the THM
+   beside a Canon AVI. Matched on folder and name, or on name alone when
+   exactly one shot on the whole card goes by that name.
+5. **The date the filesystem keeps.** Days holding such files are marked `~`.
 
-1. **EXIF** `DateTimeOriginal` / `CreateDate` / `ModifyDate` — every still and
-   every raw listed above.
-2. **The JPEG embedded in a raw**, for raws that carry the date nowhere else.
-3. **A video clock that names its own timezone** — the `©day` user data Canon
-   and Nikon write, Apple's `com.apple.quicktime.creationdate`, or the EXIF in
-   the thumbnail Canon stores beside the clip. The local time is taken as the
-   camera's own clock and the offset discarded, which is the point: it is what
-   the photographer saw on the back of the camera.
-4. **`moov/mvhd`**, read verbatim, when the clip named no zone. Panasonic
-   writes the camera's clock there, so nothing is converted.
-5. **The other format of the same shot** — the JPEG beside a raw, or the THM
-   beside a Canon AVI. Matched on folder and file name, and failing that on
-   file name alone, but only when exactly one shot on the whole card goes by
-   that name, so a dual-slot body that split raw and JPEG across two cards
-   still pairs up while two cameras that both wrote `DSC_0001` do not.
-6. **The date the filesystem keeps**, for AVCHD clips and HLG photos. Days
-   containing such files are marked `~`.
-
-Step 5 is only worth anything if whatever copied the card kept those dates.
+Step 5 is worth having only if whatever copied the card kept those dates, and
 `cp` without `-p` does not: it stamps every file with the moment of the copy.
-`shotsort` notices — a filesystem date well after the newest date any file
-actually records is the moment of a copy, not a shooting time — and puts those
-files in `undated/` rather than a wrong day. Copy with `ditto`, `cp -p` or
-`rsync -a` and they sort correctly.
+`shotsort` spots that — a filesystem date well after the newest date any file
+records is a copy, not a shoot — and sends those files to `undated/` rather than
+a wrong day. Copy with `ditto`, `cp -p` or `rsync -a`.
 
 ## Safety
 
@@ -391,8 +374,3 @@ npm install --no-save @stryker-mutator/core
 npx stryker run                          # the modules that decide things
 npx stryker run stryker.disk.json        # the modules that touch the disk
 ```
-
-## Buy me a coffee
-
-`shotsort` is free and always will be. If it saved you an afternoon of dragging
-folders around, [buy me a coffee](https://buymeacoffee.com/mativp).
