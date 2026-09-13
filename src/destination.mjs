@@ -41,7 +41,7 @@ export function destinationProbeOverTheFilesystem() {
   return {
     exists: (candidatePath) => fs.existsSync(candidatePath),
     contentsMatch: (firstPath, secondPath, sizeInBytes) => {
-      const pair = firstPath < secondPath ? `${firstPath}\0${secondPath}` : `${secondPath}\0${firstPath}`;
+      const pair = JSON.stringify([firstPath, secondPath].sort());
       const alreadyAnswered = answerForEachPair.get(pair);
       if (alreadyAnswered !== undefined) return alreadyAnswered;
       const theyMatch = filesHaveIdenticalContents(firstPath, secondPath, sizeInBytes);

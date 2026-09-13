@@ -23,20 +23,10 @@ const error = (line) => console.error(line);
 function readVersionFromPackageManifest() {
   const binDirectory = path.dirname(fileURLToPath(import.meta.url));
   try {
-    return JSON.parse(fs.readFileSync(path.join(binDirectory, '..', 'package.json'), 'utf8')).version;
+    return JSON.parse(fs.readFileSync(path.join(binDirectory, '..', 'package.json'))).version;
   } catch {
     return 'unknown';
   }
-}
-
-function directoriesAmong(inputPaths) {
-  return inputPaths.filter((inputPath) => {
-    try {
-      return fs.statSync(inputPath).isDirectory();
-    } catch {
-      return false;
-    }
-  });
 }
 
 function placeEveryFile(plan, options) {
@@ -44,7 +34,7 @@ function placeEveryFile(plan, options) {
   try {
     return applyPlan(plan.placements, {
       moveInsteadOfCopying: options.moveInsteadOfCopying,
-      directoriesToTidy: directoriesAmong(options.inputPaths),
+      directoriesToTidy: options.inputPaths,
       onFileStarted: progress.startedOn,
       onBytesWritten: progress.bytesWrittenTo,
       onFileFinished: progress.finishedWith,
@@ -65,13 +55,13 @@ function sort(options) {
   try {
     candidateFiles = findMediaFiles(options.inputPaths);
   } catch (folderCouldNotBeRead) {
-    error(`${PROGRAM_NAME}: ${folderCouldNotBeRead.path ?? ''}: ${folderCouldNotBeRead.code ?? folderCouldNotBeRead.message}`);
+    error(`${PROGRAM_NAME}: ${folderCouldNotBeRead.path}: ${folderCouldNotBeRead.code ?? folderCouldNotBeRead.message}`);
     return EXIT_CODE.somethingFailedOrNothingFound;
   }
 
   const emptyPlan = { placements: [], filesystemDateUseCounts: { filesDatedByTheFilesystem: 0, filesLeftUndated: 0 }, namesSplitIntoSubfolders: 0 };
   if (candidateFiles.length === 0) {
-    if (options.json) reportAsJson({ plan: emptyPlan, outcome: countPlacements([]), fileCount: 0, options }, { out });
+    if (options.json) reportAsJson({ plan: emptyPlan, outcome: countPlacements(emptyPlan.placements), fileCount: 0, options }, { out });
     else error(`${PROGRAM_NAME}: no photos or video found`);
     return EXIT_CODE.somethingFailedOrNothingFound;
   }

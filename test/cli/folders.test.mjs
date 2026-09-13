@@ -105,7 +105,7 @@ test('naming one file rather than a folder', async (context) => {
   const missing = runCommand([path.join(disk, 'DCIM', 'NOT-THERE.JPG')]);
   await context.test('a folder or file that is not there is reported with its path and its reason', () => assert.ok(
     missing.exitCode === EXIT_CODE.somethingFailedOrNothingFound
-    && missing.standardError.includes('NOT-THERE.JPG') && /ENOENT/.test(missing.standardError),
+    && missing.standardError.trim() === `shotsort: ${path.join(disk, 'DCIM', 'NOT-THERE.JPG')}: ENOENT`,
     missing.standardError,
   ));
 });

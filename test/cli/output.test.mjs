@@ -7,7 +7,7 @@ import { jpegFile, jpegFilePaddedTo } from '../fixtures/jpeg.mjs';
 import { EXIT_CODE } from '../../cli/usage.mjs';
 import { COMMAND, runCommand } from '../support/commandLine.mjs';
 import { THE_PLATFORM_PIPES_OUTPUT_THE_UNIX_WAY } from '../support/platform.mjs';
-import { aPathNotYetTaken, aTemporaryDirectory, freshCardDump } from '../support/temporaryDirectories.mjs';
+import { aDirectoryHolding, aPathNotYetTaken, aTemporaryDirectory, freshCardDump } from '../support/temporaryDirectories.mjs';
 import { writeFixtureFile } from '../support/files.mjs';
 
 test('the summary the user reads', async (context) => {
@@ -97,6 +97,15 @@ test('the quiet and verbose switches', async (context) => {
     valueLastRun.standardOutput + valueLastRun.standardError,
   ));
 
+  const partlySorted = aDirectoryHolding('verbose-in-place', {
+    '2026-08-27/P1.JPG': jpegFile('2026:08:27 09:07:01'), 'DCIM/P2.JPG': jpegFile('2026:08:27 10:00:00'),
+  });
+  const verboseOverAFileInPlace = runCommand(['-v', partlySorted]);
+  await context.test('--verbose gives no line at all for a file already where it belongs', () => assert.deepEqual(
+    verboseOverAFileInPlace.standardOutput.split('\n').filter((line) => line.includes('P1.JPG') || line === 'null'),
+    [],
+  ));
+
   const clusteredVerbose = freshCardDump('clustered-verbose');
   const verboseRun = runCommand(['-vm', clusteredVerbose]);
   await context.test('and -vm is -v and -m together', () => assert.ok(
@@ -148,8 +157,10 @@ test('a card with nothing on it and a machine reading the answer', async (contex
   await context.test('an empty card still answers in json when json was asked for',
     () => assert.equal(asJson.exitCode, EXIT_CODE.somethingFailedOrNothingFound));
   const said = JSON.parse(asJson.standardOutput);
-  await context.test('and the answer says plainly that it found nothing',
-    () => assert.ok(said.summary.found === 0 && said.actions.length === 0, asJson.standardOutput));
+  await context.test('and the answer says plainly that it found nothing', () => assert.deepEqual(
+    [said.actions, said.summary.found, said.summary.datedByTheFilesystem, said.summary.leftUndated, said.summary.namesSplitIntoSubfolders],
+    [[], 0, 0, 0, 0],
+  ));
   await context.test('rather than printing a sentence a script would have to read',
     () => assert.equal(asJson.standardError, ''));
 });

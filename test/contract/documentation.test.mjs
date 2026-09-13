@@ -43,6 +43,7 @@ const commandLinesInTheCodeBlocksOf = (markdown) => [...markdown.matchAll(/^```[
   .flatMap(([, block]) => block.split('\n')).flatMap((line) => line.replace(/^\$ /, '').split(/ {2,}/))
   .filter((segment) => /^shotsort\b/.test(segment)).map((segment) => segment.split(/ \| | #/)[0].trim());
 const statusesListedIn = (section, listing) => [...section.matchAll(listing)].map(([, code]) => Number(code));
+const namesOfFileTypesIn = (list) => [...new Set(list.match(/(?<![A-Za-z0-9])[A-Z0-9]{2,5}(?![a-z0-9])/g) ?? [])];
 
 const SURFACES = {
   '--help': {
@@ -56,12 +57,15 @@ const SURFACES = {
       .filter((line) => line.startsWith('.B shotsort')).map((line) => line.slice('.B '.length).replace(/\\-/g, '-')),
     exitStatuses: statusesListedIn(sectionOf(manualPageSource, '.SH EXIT STATUS', '\n.SH '), /^\.B (\d+)$/gm),
     listOfFileTypes: sectionOf(manualPageSource, '.SH FILE TYPES', '\n.SH '),
+    fileTypesItNames: namesOfFileTypesIn(sectionOf(manualPageSource, '.SH FILE TYPES', '\n.PP\nThe extension decides')
+      .split('\n').filter((line) => /^\.BR? /.test(line)).map((line) => line.replace(/^\.BR? /, '')).join('\n')),
   },
   'the README': {
     text: readme,
     commandLines: commandLinesInTheCodeBlocksOf(readme),
     exitStatuses: statusesListedIn(sectionOf(readme, '### Exit status', '\n#'), /^\| `(\d+)` \|/gm),
     listOfFileTypes: sectionOf(readme, '## What it reads', '\n## '),
+    fileTypesItNames: namesOfFileTypesIn(sectionOf(readme, '## What it reads', '\nThe extension decides').replace(/\([^)]*\)/g, '')),
     longOptionsOfOtherProgramsItQuotes: ['--no-save', '--no'],
   },
 };
@@ -105,7 +109,7 @@ test('the options the documentation describes', async (context) => {
 });
 
 test('the facts the documentation states', async (context) => {
-  for (const [surfaceName, { text, exitStatuses, listOfFileTypes }] of Object.entries(SURFACES)) {
+  for (const [surfaceName, { text, exitStatuses, listOfFileTypes, fileTypesItNames }] of Object.entries(SURFACES)) {
     await context.test(`${surfaceName} states the values the program uses`, () => assert.deepEqual(
       FACTS_TAKEN_FROM_THE_PROGRAM.filter(([, value]) => !text.includes(value)).map(([fact, value]) => `${fact}: ${value}`),
       [],
@@ -118,6 +122,10 @@ test('the facts the documentation states', async (context) => {
         .filter((name) => !new RegExp(`(?<![A-Za-z0-9])${name}(?![A-Za-z0-9])`).test(listOfFileTypes)),
       [],
     ));
+    await context.test(`and every kind of file ${surfaceName} names there is one the program reads`, () => {
+      assert.ok(fileTypesItNames.length > 0, `no file types found in the list ${surfaceName} gives`);
+      assert.deepEqual(fileTypesItNames.filter((name) => !MEDIA_FILE_EXTENSIONS.has(`.${name}`)), []);
+    });
   }
 
   await context.test('the man page carries the version in the manifest', () => assert.equal(

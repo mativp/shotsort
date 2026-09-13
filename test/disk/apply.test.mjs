@@ -118,6 +118,15 @@ test('a rename that failed for some other reason', async (context) => {
   await context.test('and the original is left where it was', () => assert.ok(fs.existsSync(source)));
 });
 
+test('a duplicate when copying', async (context) => {
+  const disk = aDirectoryHolding('duplicate-copied', { 'DCIM/P1.JPG': jpegFile('2026:08:27 09:07:01'), '2026-08-27/P1.JPG': jpegFile('2026:08:27 09:07:01') });
+  const outcome = applyPlan([anEntryFor(path.join(disk, 'DCIM', 'P1.JPG'), path.join(disk, '2026-08-27', 'P1.JPG'), PLACEMENT.duplicateOfAFileAlreadySorted)]);
+  await context.test('is counted as a duplicate and left on the card', () => assert.ok(
+    outcome.duplicates === 1 && fs.existsSync(path.join(disk, 'DCIM', 'P1.JPG')),
+    JSON.stringify(outcome),
+  ));
+});
+
 test('what is counted without anything being written', async (context) => {
   const disk = aDirectoryHolding('counted', {
     'DCIM/P1.JPG': jpegFile('2026:08:27 09:07:01'),

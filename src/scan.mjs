@@ -7,10 +7,8 @@ import { hasMediaExtension } from './extensions.mjs';
 // A CandidateFile is { path, sortRoot, sizeInBytes, fileTimestamp } and nothing else.
 // `sortRoot` is the folder the day folders go under when no --dest was given.
 
-const OPERATING_SYSTEM_DIRECTORIES_TO_SKIP = new Set([
-  '.Spotlight-V100', '.Trashes', '.fseventsd', '.TemporaryItems',
-  'System Volume Information', '$RECYCLE.BIN',
-]);
+// The macOS ones start with a dot and are skipped with every other hidden folder.
+const OPERATING_SYSTEM_DIRECTORIES_TO_SKIP = new Set(['System Volume Information', '$RECYCLE.BIN']);
 
 function collectMediaFilePathsUnder(directory, collected) {
   let directoryEntries;

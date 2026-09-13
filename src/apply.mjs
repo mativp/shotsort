@@ -59,7 +59,7 @@ function copyContents(filesystem, entry, reportBytesWritten) {
 function moveFile(filesystem, entry, reportBytesWritten) {
   const { sourcePath, targetPath } = entry;
   if (filesystem.existsSync(targetPath)) {
-    throw Object.assign(new Error('target appeared after the plan was made'), { code: 'EEXIST' });
+    throw Object.assign(new Error(), { code: 'EEXIST' });
   }
   try {
     filesystem.renameSync(sourcePath, targetPath);
@@ -97,14 +97,11 @@ function removeEmptyDirectoriesUnder(filesystem, directory, isTheDirectoryTheUse
   if (isTheDirectoryTheUserNamed) return directoriesRemoved;
 
   try {
-    if (filesystem.readdirSync(directory).length === 0) {
-      filesystem.rmdirSync(directory);
-      directoriesRemoved++;
-    }
+    filesystem.rmdirSync(directory);
+    return directoriesRemoved + 1;
   } catch {
     return directoriesRemoved;
   }
-  return directoriesRemoved;
 }
 
 function carryOutOnePlacement(entry, outcome, { moveInsteadOfCopying, onFilePlaced, onBytesWritten, filesystem }) {
