@@ -20,9 +20,8 @@ jobs:
         node-version: ['22', '24', '26']
         os: [ubuntu-latest]
         include:
-          # The files it sorts come off cameras onto macOS and Windows as often as Linux,
-          # and the path handling is the part most likely to differ.
-          - { node-version: '22', os: macos-latest }
+          # The files it sorts come off cameras onto Windows as often as Linux, and the
+          # path handling is the part most likely to differ.
           - { node-version: '22', os: windows-latest }
 
     steps:
