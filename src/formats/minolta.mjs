@@ -15,6 +15,7 @@ export const startsWithAMinoltaRawMark = (byteSource) =>
   MINOLTA_RAW_MARKS.includes(readTextAt(byteSource, 0, BYTES_IN_A_MINOLTA_RAW_MARK));
 
 export function readCameraClockFromMinoltaRaw(byteSource) {
+  if (!startsWithAMinoltaRawMark(byteSource)) return null;
   let blockStart = BYTES_IN_A_MINOLTA_BLOCK_HEADER;
   while (blockStart + BYTES_IN_A_MINOLTA_BLOCK_HEADER <= byteSource.sizeInBytes) {
     const blockType = readTextAt(byteSource, blockStart, BYTES_IN_A_MINOLTA_BLOCK_TYPE);

@@ -125,12 +125,9 @@ export const FORMATS_IN_THE_ORDER_THEY_ARE_TRIED = [
 
 export function readCameraClockFromByteSource(byteSource) {
   for (const format of FORMATS_IN_THE_ORDER_THEY_ARE_TRIED) {
-    const theFileSaysItIsThisFormat = format.recognisedBy !== null && format.recognisedBy(byteSource);
-    if (format.recognisedBy !== null && !theFileSaysItIsThisFormat) continue;
-
     const clock = format.read(byteSource);
     if (clock !== null) return { clock, source: format.source };
-    if (theFileSaysItIsThisFormat) return null;
+    if (format.recognisedBy !== null && format.recognisedBy(byteSource)) return null;
   }
   return null;
 }

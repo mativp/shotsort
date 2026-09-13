@@ -87,6 +87,7 @@ function findCaptureTimeInCiffHeap(byteSource, heapStart, heapEnd, isLittleEndia
 }
 
 export function readCameraClockFromCanonCiffRaw(byteSource) {
+  if (!startsWithACanonCiffMark(byteSource)) return null;
   const byteOrder = byteOrderAt(byteSource, 0);
   if (byteOrder === null) return null;
 

@@ -57,6 +57,7 @@ function readCaptureTimeFromSigmaProperties(byteSource, sectionStart) {
 }
 
 export function readCameraClockFromSigmaRaw(byteSource) {
+  if (!startsWithASigmaRawMark(byteSource)) return null;
   const directoryStart = readUInt32At(byteSource, byteSource.sizeInBytes - BYTES_IN_A_SIGMA_DIRECTORY_POINTER, true);
   if (directoryStart === null || directoryStart <= 0 || directoryStart >= byteSource.sizeInBytes) return null;
   if (readTextAt(byteSource, directoryStart, BYTES_IN_A_SIGMA_MARK) !== SIGMA_DIRECTORY_MARK) return null;

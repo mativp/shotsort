@@ -21,7 +21,7 @@ import { aviFileRecordingWhenItWasShot, aviFileSayingOnlyWhenItWasCreated, webPS
 import { pngStill, pngStillDatedOnlyByWhenItWasLastWritten, pngStillDatedOnlyInItsText } from '../fixtures/png.mjs';
 import { matroskaMovie } from '../fixtures/matroska.mjs';
 import { windowsMediaMovie } from '../fixtures/asf.mjs';
-import { jpegXlStill } from '../fixtures/jpegXl.mjs';
+import { BYTES_IN_THE_JPEG_XL_SIGNATURE_BOX, jpegXlStill } from '../fixtures/jpegXl.mjs';
 import { digitalVideoClip } from '../fixtures/digitalVideo.mjs';
 import { redcodeClip } from '../fixtures/redcode.mjs';
 import { everyFixtureFormatIsBuiltFrom } from '../fixtures/catalogue.mjs';
@@ -71,7 +71,26 @@ test('the mark on a file is the last word on it', async (context) => {
   const jpegWithNoExif = Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(64, 0), Buffer.from([0xff, 0xd9])]);
   await context.test('a JPEG carrying no Exif is a JPEG with no date, not something to try as a movie',
     () => assert.equal(clockInside(jpegWithNoExif), null));
+
+  const jpegXlSignatureBox = jpegXlStill('2026:08:27 10:03:00').subarray(0, BYTES_IN_THE_JPEG_XL_SIGNATURE_BOX);
+  const jpegXlCarryingAMovieBoxButNoExif = Buffer.concat([jpegXlSignatureBox, movieFile('2026-08-28 09:00:00')]);
+  await context.test('nor is a JPEG XL with no Exif, though it is built of the same boxes a movie is and carries a movie box',
+    () => assert.equal(clockInside(jpegXlCarryingAMovieBoxButNoExif), null));
 });
+
+// The last byte of the mark is the one broken, so everything after it is still laid out
+// for a reader that went on regardless.
+const MOST_BYTES_A_MARK_SPANS = 64;
+function withTheLastByteOfItsMarkBroken(format, bytes) {
+  const brokenAt = (position) => {
+    const broken = Buffer.from(bytes);
+    broken[position] ^= 0xff;
+    return broken;
+  };
+  const positionsInTheMark = [...Array(Math.min(MOST_BYTES_A_MARK_SPANS, bytes.length)).keys()]
+    .filter((position) => !format.recognisedBy(byteSourceForBuffer(brokenAt(position))));
+  return brokenAt(positionsInTheMark.at(-1));
+}
 
 // The registry only offers a reader a file its mark already matched, so a reader could in
 // principle trust that and read anything it was handed. None of them does, and this is what
@@ -91,6 +110,18 @@ test('every reader refuses a file that is not its format', async (context) => {
 
   await context.test('a reader handed a file its own mark refuses reads nothing out of it',
     () => assert.deepEqual(readAnyway, []));
+
+  const readWithItsMarkBroken = [];
+  for (const format of FORMATS_IN_THE_ORDER_THEY_ARE_TRIED) {
+    if (format.recognisedBy === null) continue;
+    for (const { fileName, bytes } of fixtures) {
+      if (!format.recognisedBy(byteSourceForBuffer(bytes))) continue;
+      const broken = withTheLastByteOfItsMarkBroken(format, bytes);
+      if (format.read(byteSourceForBuffer(broken)) !== null) readWithItsMarkBroken.push(`${format.name} read ${fileName}`);
+    }
+  }
+  await context.test('nor out of a file of its own format whose mark has been broken',
+    () => assert.deepEqual(readWithItsMarkBroken, []));
 });
 
 test('containers that are legal but unusual', async (context) => {
