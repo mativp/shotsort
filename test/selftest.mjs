@@ -1382,7 +1382,7 @@ function theModulesThatMustNotTouchTheDisk() {
   const projectRoot = path.join(testDirectory, '..');
   const mustStayPure = [
     'src/clock.mjs', 'src/plan.mjs', 'src/dating.mjs', 'src/extensions.mjs', 'src/dateSource.mjs',
-    'cli/options.mjs', 'cli/report.mjs', 'cli/usage.mjs',
+    'cli/options.mjs', 'cli/progress.mjs', 'cli/report.mjs', 'cli/usage.mjs',
     ...everySourceFileUnder(projectRoot).filter((relativePath) => relativePath.startsWith('src/formats/')),
   ];
   const reachesForTheDisk = /from 'node:fs'|require\('node:fs'\)|\bfs\./;
