@@ -4,7 +4,7 @@
   "packageManager": "npm",
   "testRunner": "command",
   "commandRunner": {
-    "command": "node test/runUntilTheFirstFailure.mjs disk cli"
+    "command": "node test/runUntilTheFirstFailure.mjs disk cli contract/catalogue.test.mjs contract/documentation.test.mjs"
   },
   "mutate": [
     "src/apply.mjs",

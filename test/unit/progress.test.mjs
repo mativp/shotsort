@@ -65,15 +65,15 @@ test('the progress line says how far the copy has got', async (context) => {
   const fillingAllButTheLastColumn = progressLineText(withTheTimeLeft, 109);
   await context.test('a line filling every column but the last is kept whole', () => assert.ok(
     fillingAllButTheLastColumn.length === 108 && fillingAllButTheLastColumn.endsWith('P1000002.JPG'),
-    String(fillingAllButTheLastColumn),
+    fillingAllButTheLastColumn,
   ));
   await context.test('on a narrower terminal the file name gives way before the time left', () => assert.ok(
     progressLineText(withTheTimeLeft, 100).endsWith('about 10 min left'),
-    String(progressLineText(withTheTimeLeft, 100)),
+    progressLineText(withTheTimeLeft, 100),
   ));
   await context.test('and once one part does not fit, a shorter one after it is not slipped into the gap', () => assert.ok(
     progressLineText(withTheTimeLeft, 88).endsWith('3.0 MB of 8.0 MB'),
-    String(progressLineText(withTheTimeLeft, 88)),
+    progressLineText(withTheTimeLeft, 88),
   ));
   await context.test('narrower still, only the bar and the share are left',
     () => assert.equal(progressLineText(partWayThroughACopy, 40), 'copying  37%  [###.......]'));
@@ -197,12 +197,12 @@ test('the progress line as the files go by', async (context) => {
   clock.moveTo(2999);
   progress.printAbove(() => {});
   await context.test('with less than three seconds watched it makes no guess at the time left',
-    () => assert.ok(!lastLineDrawnOn(terminal).includes('left'), String(lastLineDrawnOn(terminal))));
+    () => assert.ok(!lastLineDrawnOn(terminal).includes('left'), lastLineDrawnOn(terminal)));
   clock.moveTo(3000);
   progress.printAbove(() => {});
   await context.test('at three seconds it guesses from the rate so far: 12 MB in three seconds leaves one for the last 4 MB', () => assert.ok(
     lastLineDrawnOn(terminal).endsWith('12.0 MB of 16.0 MB  under a minute left  P3.JPG'),
-    String(lastLineDrawnOn(terminal)),
+    lastLineDrawnOn(terminal),
   ));
 
   progress.startedOn(photos[3]);
@@ -223,7 +223,7 @@ test('the progress line as the files go by', async (context) => {
   firstClipClock.moveTo(5 * MILLISECONDS_IN_A_SECOND);
   firstClipProgress.printAbove(() => {});
   await context.test('nor does it guess while nothing has been written yet, however long that has taken',
-    () => assert.ok(!lastLineDrawnOn(firstClipTerminal).includes('left'), String(lastLineDrawnOn(firstClipTerminal))));
+    () => assert.ok(!lastLineDrawnOn(firstClipTerminal).includes('left'), lastLineDrawnOn(firstClipTerminal)));
 
   const slowClock = aClockStoppedAtTheStart();
   const slowTerminal = aTerminalWatching();
@@ -235,7 +235,7 @@ test('the progress line as the files go by', async (context) => {
   slowProgress.finishedWith(photo);
   slowProgress.startedOn(longClip);
   await context.test('the time left is the bytes still to come at the rate so far: 3500 MB at 50 MB a second is about a minute',
-    () => assert.ok(lastLineDrawnOn(slowTerminal).includes('about 1 min left'), String(lastLineDrawnOn(slowTerminal))));
+    () => assert.ok(lastLineDrawnOn(slowTerminal).includes('about 1 min left'), lastLineDrawnOn(slowTerminal)));
 
   const clipClock = aClockStoppedAtTheStart();
   const clipTerminal = aTerminalWatching();
@@ -257,14 +257,14 @@ test('the progress line as the files go by', async (context) => {
   clipProgress.bytesWrittenTo(bigClip, 2000 * BYTES_IN_A_MEGABYTE);
   await context.test('and the time left is guessed from them: 2000 MB in three seconds leaves about three seconds for the rest', () => assert.ok(
     lastLineDrawnOn(clipTerminal).includes('under a minute left'),
-    String(lastLineDrawnOn(clipTerminal)),
+    lastLineDrawnOn(clipTerminal),
   ));
   clipProgress.finishedWith(bigClip);
   clipClock.moveTo(3100);
   clipProgress.startedOn(nextPhoto);
   await context.test('once the file is finished its bytes are counted once, not again on top of what was reported', () => assert.ok(
     lastLineDrawnOn(clipTerminal).includes('1 of 2 files  3.9 GB of 3.9 GB'),
-    String(lastLineDrawnOn(clipTerminal)),
+    lastLineDrawnOn(clipTerminal),
   ));
 
   for (const [howItFailsToSay, columns] of [['gives no width', undefined], ['says it is no columns wide', 0]]) {
@@ -274,7 +274,7 @@ test('the progress line as the files go by', async (context) => {
     const drawn = lastLineDrawnOn(unmeasuredTerminal);
     await context.test(`a terminal that ${howItFailsToSay} is taken to be 80 columns, and a move says it is moving`, () => assert.ok(
       drawn.startsWith('moving ') && drawn.length < 80 && theBarIn(drawn)?.length === 80 / 4 + '[]'.length,
-      String(drawn),
+      drawn,
     ));
   }
 

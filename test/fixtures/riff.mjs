@@ -1,4 +1,4 @@
-import { PADDING_CHUNK_BODY_BYTES } from './bytes.mjs';
+import { PADDING_CHUNK_BODY_BYTES } from './filler.mjs';
 import { EXIF_HEADER, TIFF_STANDARD_SIGNATURE, tiffFile } from './tiff.mjs';
 
 const BYTES_IN_A_RIFF_CHUNK_HEADER = 8;

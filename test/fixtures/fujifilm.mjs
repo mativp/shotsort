@@ -1,4 +1,4 @@
-import { BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE } from './bytes.mjs';
+import { BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE } from './filler.mjs';
 import { jpegFile } from './jpeg.mjs';
 
 const FUJIFILM_RAW_HEADER_BYTES = 148;

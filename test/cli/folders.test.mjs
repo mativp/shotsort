@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { jpegFile } from '../fixtures/jpeg.mjs';
-import { writeFixtureFile } from '../fixtures/cardDump.mjs';
+import { EXIT_CODE } from '../../cli/usage.mjs';
 import { THE_FILESYSTEM_HONOURS_PERMISSIONS } from '../support/platform.mjs';
+import { runCommand } from '../support/commandLine.mjs';
 import {
-  EXIT_EVERYTHING_PLACED, EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND, filesUnder, freshCardDump, runCommand,
-} from '../support/commandLine.mjs';
-import { aDirectoryHolding, aPathNotYetTaken, aTemporaryDirectory } from '../support/temporaryDirectories.mjs';
+  aDirectoryHolding, aPathNotYetTaken, aTemporaryDirectory, freshCardDump,
+} from '../support/temporaryDirectories.mjs';
+import { filesUnder, writeFixtureFile } from '../support/files.mjs';
 
 test('when the filesystem refuses', {
   skip: !THE_FILESYSTEM_HONOURS_PERMISSIONS && 'this filesystem does not refuse a destination to its owner',
@@ -20,15 +21,13 @@ test('when the filesystem refuses', {
 
   const refused = runCommand(['-s', dump, '-d', destination]);
   await context.test('a destination that cannot be written to fails loudly and exits 1', () => assert.ok(
-    refused.exitCode === EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND
+    refused.exitCode === EXIT_CODE.somethingFailedOrNothingFound
     && /failed/.test(refused.standardOutput)
     && /EACCES|EPERM/.test(refused.standardError),
     refused.standardOutput + refused.standardError,
   ));
   await context.test('and leaves every original where it was',
     () => assert.ok(fs.existsSync(path.join(dump, 'DCIM/100_PANA/P1000001.JPG'))));
-
-  fs.chmodSync(destination, 0o700);
 });
 
 test('the folders left behind', async (context) => {
@@ -92,22 +91,22 @@ test('naming one file rather than a folder', async (context) => {
 
   const sorted = runCommand([onePhoto]);
   await context.test('a single photo may be named instead of a folder',
-    () => assert.equal(sorted.exitCode, EXIT_EVERYTHING_PLACED));
+    () => assert.equal(sorted.exitCode, EXIT_CODE.everythingPlaced));
   await context.test('and its day folder is made beside it rather than under it',
     () => assert.ok(fs.existsSync(path.join(disk, 'DCIM', '2026-08-27', 'P1.JPG')), filesUnder(disk).join('\n')));
 
   const notAPhoto = runCommand([path.join(disk, 'DCIM', 'notes.txt')]);
   await context.test('a named file that is no kind of photo or video is nothing to sort', () => assert.ok(
-    notAPhoto.exitCode === EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND
+    notAPhoto.exitCode === EXIT_CODE.somethingFailedOrNothingFound
     && /no photos or video found/.test(notAPhoto.standardError),
-    String(notAPhoto.standardError),
+    notAPhoto.standardError,
   ));
 
   const missing = runCommand([path.join(disk, 'DCIM', 'NOT-THERE.JPG')]);
   await context.test('a folder or file that is not there is reported with its path and its reason', () => assert.ok(
-    missing.exitCode === EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND
+    missing.exitCode === EXIT_CODE.somethingFailedOrNothingFound
     && missing.standardError.includes('NOT-THERE.JPG') && /ENOENT/.test(missing.standardError),
-    String(missing.standardError),
+    missing.standardError,
   ));
 });
 
@@ -123,10 +122,8 @@ test('a folder the walk is not allowed into', {
 
   const sorted = runCommand(['-n', disk]);
   await context.test('a folder the walk is not allowed into is stepped over rather than bringing the run down', () => assert.ok(
-    sorted.exitCode === EXIT_EVERYTHING_PLACED && /2026-08-27/.test(sorted.standardOutput)
+    sorted.exitCode === EXIT_CODE.everythingPlaced && /2026-08-27/.test(sorted.standardOutput)
     && !/2026-08-28/.test(sorted.standardOutput),
     sorted.standardOutput + sorted.standardError,
   ));
-
-  fs.chmodSync(shut, 0o700);
 });

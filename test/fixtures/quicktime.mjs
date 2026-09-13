@@ -1,7 +1,6 @@
-import {
-  BYTES_OF_PRETEND_VIDEO_DATA, MILLISECONDS_PER_SECOND, PRETEND_VIDEO_DATA_FILL_BYTE, bigEndianUInt16,
-  bigEndianUInt32,
-} from './bytes.mjs';
+import { bigEndianUInt16, bigEndianUInt32 } from './bigEndian.mjs';
+import { BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE } from './filler.mjs';
+import { MILLISECONDS_PER_SECOND } from './moments.mjs';
 import { jpegFile } from './jpeg.mjs';
 import {
   BYTES_IN_AN_ISO_BOX_SIZE_FIELD, isoBox, isoBoxRunningToTheEndOfTheFile, isoBoxWith64BitSize, isoFullBox,

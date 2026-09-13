@@ -1,4 +1,5 @@
-import { BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE, secondsSince1970For } from './bytes.mjs';
+import { BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE } from './filler.mjs';
+import { secondsSince1970For } from './moments.mjs';
 import {
   TIFF_LITTLE_ENDIAN_MARK, TIFF_TAG_DATE_TIME_ORIGINAL, TIFF_TAG_MODIFY_DATE,
   tiffFileWithTheDateInItsMainDirectory,

@@ -1,4 +1,4 @@
-import { secondsSince1970For } from './bytes.mjs';
+import { secondsSince1970For } from './moments.mjs';
 
 const SIGMA_PROPERTY_SECTION_HEADER_BYTES = 24;
 // Sigma's later versions put a second, longer header after the first one; version two

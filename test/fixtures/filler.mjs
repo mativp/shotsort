@@ -1,0 +1,3 @@
+export const BYTES_OF_PRETEND_VIDEO_DATA = 4096;
+export const PRETEND_VIDEO_DATA_FILL_BYTE = 7;
+export const PADDING_CHUNK_BODY_BYTES = 1;

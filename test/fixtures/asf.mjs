@@ -1,4 +1,5 @@
-import { PADDING_CHUNK_BODY_BYTES, secondsSince1970For } from './bytes.mjs';
+import { PADDING_CHUNK_BODY_BYTES } from './filler.mjs';
+import { secondsSince1970For } from './moments.mjs';
 
 const ASF_HEADER_OBJECT_ID = Buffer.from('3026b2758e66cf11a6d900aa0062ce6c', 'hex');
 const ASF_FILE_PROPERTIES_OBJECT_ID = Buffer.from('a1dcab8c47a9cf118ee400c00c205365', 'hex');

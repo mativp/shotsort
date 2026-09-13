@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { cameraClockFromExifText as exif } from '../../src/clock.mjs';
 import { DATE_SOURCE } from '../../src/dateSource.mjs';
 import { NO_FREE_NAME_IN_THE_DAY_FOLDER, PLACEMENT, buildPlan, countPlacements } from '../../src/plan.mjs';
-import { asThisPlatformSpellsIt, candidate, exif, probeOver } from '../support/inMemory.mjs';
+import { asThisPlatformSpellsIt, candidate, probeOver } from '../support/inMemory.mjs';
 
 test('a plan is settled with no disk involved', async (context) => {
   const plan = buildPlan([
@@ -23,7 +24,7 @@ test('a plan is settled with no disk involved', async (context) => {
   ));
 });
 
-test('two photos of one day sharing a name', async (context) => {
+test('planning two photos of one day that share a name', async (context) => {
   const morning = candidate('/card/100/A9999.JPG', { clock: exif('2026:09:01 10:00:00'), sizeInBytes: 1000 });
   const evening = candidate('/card/101/A9999.JPG', { clock: exif('2026:09:01 18:00:00'), sizeInBytes: 1000 });
   const plan = buildPlan([evening, morning], {}, probeOver([]));
@@ -63,8 +64,6 @@ test('a file already where it belongs', async (context) => {
 });
 
 test('the same files always give the same plan', async (context) => {
-  // An undated file used to be ordered against a dated one by a comparison that answered
-  // "after" both ways round, so this is the check that the ordering is now fixed.
   const files = [
     candidate('/card/a/CLIP.MTS', { fileTimestamp: new Date(2026, 8, 15, 10) }),
     candidate('/card/DCIM/P1.JPG', { clock: exif('2026:08:27 10:00:00'), dateSource: DATE_SOURCE.exifMetadata }),

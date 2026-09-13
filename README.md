@@ -258,8 +258,8 @@ duplicate rather than a clash, so they collapse into one file.
 
 ## What it reads
 
-**Stills** — JPEG, JPE, JPS, MPO, INSP, TIF, TIFF, BTF, PNG, APNG, WEBP, JXL, HSP,
-HIF, HEIC, HEIF, AVIF, and Canon THM sidecars.
+**Stills** — JPG, JPEG, JPE, JPS, MPO, INSP, TIF, TIFF, BTF, PNG, APNG, WEBP, JXL,
+HSP, HIF, HEIC, HEIF, AVIF, and Canon THM sidecars.
 
 **Raw** — RW2, RAW, RWL (Panasonic), CR2, CR3, CRM, CRW (Canon), NEF, NRW
 (Nikon), ARW, ARQ, SR2, SRF (Sony), ORF, ORI (Olympus, OM System), RAF
@@ -329,17 +329,17 @@ you named.
 ## Test
 
 ```sh
-npm test                       # every suite
-npm run test:unit              # one suite: also test:disk, test:cli, test:contract
-npm run test:against-exiftool  # the exiftool oracle alone
-npm run lint                   # eslint
-npm run coverage               # every suite under Node's coverage reporter
-npm run coverage:check         # the same, failing below the floors the badges state
+npm test                # every suite
+npm run test:unit       # one suite: also test:disk, test:cli, test:contract, test:oracle
+npm run lint            # eslint
+npm run coverage        # every suite under Node's coverage reporter
+npm run coverage:check  # the same, failing below the floors the badges state
 ```
 
-Five suites, on Node's own test runner and with nothing to install. Each is a
-directory under `test/`, and any file in it ending in `.test.mjs` is run by
-`npm test` without being listed anywhere.
+Five suites on Node's own test runner, with no dependency to install; only the
+oracle needs a program besides Node, and it is skipped without one. Each suite is
+a directory under `test/`, and any file in it ending in `.test.mjs`, at any depth,
+is run by `npm test` without being listed anywhere.
 
 `test/unit` runs without a filesystem. Format readers are handed a `Buffer` and
 the planner a stub that answers "does this path exist" and "are these the same
@@ -348,20 +348,22 @@ than for the files it left behind.
 
 `test/disk` puts the modules whose job is the disk to a real one: copies, moves,
 a move onto another disk, a copy that came up short, a file that cannot be
-opened. The one failure asked about is handed in through a wrapped filesystem,
-and everything else is the real thing happening in a real directory.
+opened. A failure a real disk will not produce on demand, such as a rename across
+disks, is handed in through a wrapped filesystem; everything else happens in a
+real directory.
 
 `test/cli` builds a synthetic card dump — raw/JPEG pairs, a raw recording no
 date, a raw dated only by the JPEG it embeds, clips either side of midnight,
 AVCHD outside DCIM, a name collision between card folders — runs the real
 command against it, and checks where every file lands and what it prints.
 
-`test/contract` reads the repository and runs nothing. It checks every module's
-imports against the parts of the program it may use, so the modules that decide
-things never reach the disk or start a process and the package keeps no
-dependencies; that `--help`, the man page and this README describe every option
-the program declares and state the values its own constants hold; and that every
-format reader has a fixture to read.
+`test/contract` starts no process and writes nothing: it reads the repository
+and asks the program's own tables and readers. It checks every module's imports
+against the parts of the program it may use, so the modules that decide things
+never reach the disk or start a process and the package keeps no dependencies;
+that each suite reaches only what it may; that `--help`, the man page and this
+README describe every option the program declares and state the values its own
+constants hold; and that every format reader has a fixture of its own.
 
 `test/oracle` puts every fixture to `exiftool`, which is the reference
 implementation for all of these formats, and fails when the two read a different
@@ -373,8 +375,9 @@ exiftool was written from real files, so putting the fixture to it stops that.
 Three fixtures are recorded as reading differently on purpose, each with the
 reason.
 
-The fixtures are built byte by byte in `test/fixtures`, one module per format,
-and `test/fixtures/catalogue.mjs` records what each one reads as. A fixture added
+The fixtures are built byte by byte in `test/fixtures`, a module for each
+format, and `test/fixtures/catalogue.mjs` records which reader each is for and
+what it reads as. A fixture added
 to the catalogue is read whole, cut short, corrupted and put to exiftool without
 any suite being touched.
 
@@ -394,8 +397,8 @@ as something rather than throw. Between them those two sweeps run some 170,000
 reads over every format in the catalogue, and they are what the branch figure is
 made of.
 
-The mutation score is measured by hand rather than in CI, because a run takes
-minutes where the suite takes seconds. It is the sharper number: it changes the
+The mutation score is measured by hand rather than in CI, because a full run
+takes hours where the suite takes seconds. It is the sharper number: it changes the
 program in one small way at a time — a `<` for a `<=`, a constant for another, a
 condition for `true` — and reports every change no check noticed. A line the
 suite runs but never checks counts as covered and survives mutation, which is why
@@ -409,6 +412,10 @@ first test that fails, one failure being enough to settle a mutant:
 
 ```sh
 npm install --no-save @stryker-mutator/core
-npx stryker run                          # the modules that decide things
-npx stryker run stryker.disk.json        # the modules that touch the disk
+npx --no stryker run                          # the modules that decide things
+npx --no stryker run stryker.disk.json        # the modules that touch the disk
 ```
+
+An install made with `--no-save` is removed by the next `npm ci`, so it has to be
+made again after one. `--no` keeps npx from fetching the unrelated `stryker`
+package from the registry when that install is missing.

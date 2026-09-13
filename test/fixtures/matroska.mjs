@@ -1,4 +1,4 @@
-import { secondsSince1970For } from './bytes.mjs';
+import { secondsSince1970For } from './moments.mjs';
 
 const EBML_HEADER_ELEMENT = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
 const MATROSKA_SEGMENT_ELEMENT = Buffer.from([0x18, 0x53, 0x80, 0x67]);

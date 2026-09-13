@@ -5,13 +5,12 @@ import {
   OLYMPUS_RAW_SIGNATURE, PANASONIC_RAW_SIGNATURE, TIFF_STANDARD_SIGNATURE, tiffFile,
 } from '../fixtures/tiff.mjs';
 import { jpegFile } from '../fixtures/jpeg.mjs';
-import { writeFixtureFile } from '../fixtures/cardDump.mjs';
 import { UNDATED_FOLDER_NAME } from '../../src/plan.mjs';
 import { DATE_SOURCE } from '../../src/dateSource.mjs';
-import {
-  EXIT_EVERYTHING_PLACED, folderChosenFor, freshCardDump, runCommand, visibleFilesUnder,
-} from '../support/commandLine.mjs';
-import { aTemporaryDirectory } from '../support/temporaryDirectories.mjs';
+import { EXIT_CODE } from '../../cli/usage.mjs';
+import { folderChosenFor, runCommand } from '../support/commandLine.mjs';
+import { aTemporaryDirectory, freshCardDump } from '../support/temporaryDirectories.mjs';
+import { visibleFilesUnder, writeFixtureFile } from '../support/files.mjs';
 
 test('a card from another maker sorts too', async (context) => {
   const dump = aTemporaryDirectory('other-maker');
@@ -32,12 +31,12 @@ test('a card from another maker sorts too', async (context) => {
     folderChosenFor(plan.standardOutput, 'MVI_0002.AVI') === '2026-08-28'
     && JSON.parse(plan.standardOutput).actions
       .find((action) => action.src.endsWith('MVI_0002.AVI')).dateFrom === DATE_SOURCE.siblingFile,
-    String(plan.standardOutput),
+    plan.standardOutput,
   ));
 
   const sorted = runCommand(['--move', dump]);
   await context.test('a card holding Canon and Olympus files sorts by the dates inside them, and exits 0',
-    () => assert.equal(sorted.exitCode, EXIT_EVERYTHING_PLACED));
+    () => assert.equal(sorted.exitCode, EXIT_CODE.everythingPlaced));
   await context.test('and every one of them lands in the day its own camera recorded', () => assert.equal(
     visibleFilesUnder(dump).join('\n'),
     [
@@ -97,7 +96,7 @@ test('a card copied without preserving times', async (context) => {
   const actualFiles = visibleFilesUnder(dump);
 
   await context.test('files recording no date of their own go to undated/ when their filesystem date is a copy artefact', () => assert.ok(
-    actualFiles.includes('undated/P1000004.HSP') && actualFiles.includes('undated/00000.MTS'),
+    actualFiles.includes(`${UNDATED_FOLDER_NAME}/P1000004.HSP`) && actualFiles.includes(`${UNDATED_FOLDER_NAME}/00000.MTS`),
     JSON.stringify(actualFiles, null, 1),
   ));
   await context.test('every other file still sorts by the date it records itself', () => assert.ok(
@@ -114,7 +113,7 @@ test('a card copied without preserving times', async (context) => {
   const refused = freshCardDump('refused');
   runCommand(['--move', '--ignore-filesystem-date', refused]);
   await context.test('--ignore-filesystem-date sends every file recording no date to undated/',
-    () => assert.ok(visibleFilesUnder(refused).includes('undated/00000.MTS')));
+    () => assert.ok(visibleFilesUnder(refused).includes(`${UNDATED_FOLDER_NAME}/00000.MTS`)));
 });
 
 test('matching the shot whatever the case', async (context) => {
@@ -166,5 +165,5 @@ test('the edge of trusting the filesystem', async (context) => {
     JSON.stringify(sortedAtTheEdge),
   ));
   await context.test('one minute past that it is treated as the moment of a copy',
-    () => assert.ok(sortedJustPastIt.includes('undated/UNDATED.HSP'), JSON.stringify(sortedJustPastIt)));
+    () => assert.ok(sortedJustPastIt.includes(`${UNDATED_FOLDER_NAME}/UNDATED.HSP`), JSON.stringify(sortedJustPastIt)));
 });

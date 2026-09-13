@@ -71,11 +71,11 @@ test('the folder summary reads oldest day first', async (context) => {
     '2026-08-27,2026-08-28,2026-08-29',
   ));
   await context.test('a size under a kilobyte is printed as the bytes it is',
-    () => assert.ok(printed[1].endsWith('512 B'), String(printed[1])));
+    () => assert.ok(printed[1].endsWith('512 B'), printed[1]));
   await context.test('and a larger one is stepped up to the unit that suits it',
-    () => assert.ok(printed[0].endsWith('3.0 MB'), String(printed[0])));
+    () => assert.ok(printed[0].endsWith('3.0 MB'), printed[0]));
   await context.test('a day holding one file says file rather than files',
-    () => assert.ok(printed[0].includes('1 file '), String(printed[0])));
+    () => assert.ok(printed[0].includes('1 file '), printed[0]));
 });
 
 test('the JSON says everything the terminal does', async (context) => {

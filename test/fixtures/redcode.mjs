@@ -1,4 +1,4 @@
-import { PADDING_CHUNK_BODY_BYTES } from './bytes.mjs';
+import { PADDING_CHUNK_BODY_BYTES } from './filler.mjs';
 
 const REDCODE_MARK = 'RED';
 const BYTES_FROM_A_REDCODE_FILE_START_TO_ITS_MARK = 4;

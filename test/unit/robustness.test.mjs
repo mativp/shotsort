@@ -10,11 +10,9 @@ import { pngStill, pngStillBuriedUnderMoreChunksThanAreWalked } from '../fixture
 import { matroskaMovieWhoseIdIsWiderThanAnyIdMayBe } from '../fixtures/matroska.mjs';
 import { windowsMediaMovie, windowsMediaMovieBuriedUnderMoreObjectsThanAreWalked } from '../fixtures/asf.mjs';
 import { redcodeClipBuriedUnderMoreRecordsThanAreWalked } from '../fixtures/redcode.mjs';
-import {
-  A_CLOCK_THE_READER_MUST_PASS_OVER, THE_ONE_MOMENT_EVERY_FIXTURE_HOLDS, everyFixtureFormatIsBuiltFrom,
-} from '../fixtures/catalogue.mjs';
+import { A_CLOCK_THE_READER_MUST_PASS_OVER, everyFixtureFormatIsBuiltFrom } from '../fixtures/catalogue.mjs';
 import { formatCameraClock } from '../../src/clock.mjs';
-import { clockInside } from '../support/inMemory.mjs';
+import { clockInside, clockTextInside } from '../support/inMemory.mjs';
 
 // A container is a tree, and a tree read out of bytes that went bad can point at itself.
 // Every walk in here therefore stops at a depth no real file reaches, and these are the
@@ -25,7 +23,7 @@ test('the shapes a walk must not be led round forever by', async (context) => {
   await context.test('a RIFF nesting its lists deeper than a camera nests them is given up on',
     () => assert.equal(clockInside(aviFileNestingItsListsDeeperThanACameraDoes(dateWrittenOut)), null));
   await context.test('while one nested the way a camcorder writes it is still read', () => assert.equal(
-    formatCameraClock(clockInside(aviFileRecordingWhenItWasShot(dateWrittenOut)).clock),
+    clockTextInside(aviFileRecordingWhenItWasShot(dateWrittenOut)),
     '2021-03-04 05:06:07',
   ));
 
@@ -34,7 +32,7 @@ test('the shapes a walk must not be led round forever by', async (context) => {
     null,
   ));
   await context.test('while the depth a camera does bury it at is still read', () => assert.equal(
-    formatCameraClock(clockInside(canonCiffRawFile('2021-03-04 05:06:07')).clock),
+    clockTextInside(canonCiffRawFile('2021-03-04 05:06:07')),
     '2021-03-04 05:06:07',
   ));
 
@@ -51,12 +49,12 @@ test('the files carrying more than a walk looks through', async (context) => {
   await context.test('a PNG burying its Exif under more chunks than are walked is given up on',
     () => assert.equal(clockInside(pngStillBuriedUnderMoreChunksThanAreWalked('2021:03:04 05:06:07')), null));
   await context.test('while one carrying the chunks a photo really has is read',
-    () => assert.equal(formatCameraClock(clockInside(pngStill('2021:03:04 05:06:07')).clock), '2021-03-04 05:06:07'));
+    () => assert.equal(clockTextInside(pngStill('2021:03:04 05:06:07')), '2021-03-04 05:06:07'));
 
   await context.test('a WMV burying its file properties under more objects than are walked is given up on',
     () => assert.equal(clockInside(windowsMediaMovieBuriedUnderMoreObjectsThanAreWalked('2021-03-04 05:06:07')), null));
   await context.test('while one written the way a camcorder writes it is read', () => assert.equal(
-    formatCameraClock(clockInside(windowsMediaMovie('2021-03-04 05:06:07')).clock),
+    clockTextInside(windowsMediaMovie('2021-03-04 05:06:07')),
     '2021-03-04 05:06:07',
   ));
 
@@ -80,8 +78,8 @@ const BYTES_STEPPED_OVER_IN_A_LONGER_FIXTURE = 13;
 
 const toTheMinute = (moment) => moment.slice(0, 'YYYY-MM-DD HH:MM'.length);
 
-const MOMENTS_A_CUT_FIXTURE_MAY_STILL_HOLD = new Set(
-  [THE_ONE_MOMENT_EVERY_FIXTURE_HOLDS, A_CLOCK_THE_READER_MUST_PASS_OVER].map(toTheMinute),
+const momentsACutOfItMayStillRead = ({ readAs }) => new Set(
+  [readAs, A_CLOCK_THE_READER_MUST_PASS_OVER].filter((moment) => moment !== null).map(toTheMinute),
 );
 
 function everyCutOf(bytes) {
@@ -95,7 +93,9 @@ test('a file that stops half way is read as less than the whole', async (context
   const readWrongly = [];
   const threw = [];
 
-  for (const { fileName, bytes } of everyFixtureFormatIsBuiltFrom()) {
+  for (const fixture of everyFixtureFormatIsBuiltFrom()) {
+    const { fileName, bytes } = fixture;
+    const mayStillRead = momentsACutOfItMayStillRead(fixture);
     for (const cut of everyCutOf(bytes)) {
       let found;
       try {
@@ -106,7 +106,7 @@ test('a file that stops half way is read as less than the whole', async (context
       }
       if (found === null) continue;
       const moment = formatCameraClock(found.clock);
-      if (!MOMENTS_A_CUT_FIXTURE_MAY_STILL_HOLD.has(toTheMinute(moment))) {
+      if (!mayStillRead.has(toTheMinute(moment))) {
         readWrongly.push(`${fileName} cut to ${cut} bytes read ${moment}`);
       }
     }

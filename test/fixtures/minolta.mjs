@@ -1,4 +1,4 @@
-import { bigEndianUInt32 } from './bytes.mjs';
+import { bigEndianUInt32 } from './bigEndian.mjs';
 import { bigEndianTiffFile } from './tiff.mjs';
 
 export function minoltaRawFile(dateTimeOriginal) {

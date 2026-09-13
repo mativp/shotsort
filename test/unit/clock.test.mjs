@@ -4,18 +4,17 @@ import {
   cameraClockFrom, cameraClockFromDateWrittenOut, cameraClockFromExifText, cameraClockFromIso8601,
   compareCameraClocks, dayFolderFor, formatCameraClock, layoutIsUsable,
 } from '../../src/clock.mjs';
-import { exif } from '../support/inMemory.mjs';
 
 test('clocks compare as a total order', async (context) => {
-  const morning = exif('2026:08:27 08:00:00');
-  const evening = exif('2026:08:27 20:00:00');
+  const morning = cameraClockFromExifText('2026:08:27 08:00:00');
+  const evening = cameraClockFromExifText('2026:08:27 20:00:00');
 
   await context.test('an earlier clock sorts before a later one',
     () => assert.equal(compareCameraClocks(morning, evening), -1));
   await context.test('and the comparison is the other way round when the arguments are',
     () => assert.equal(compareCameraClocks(evening, morning), 1));
   await context.test('the same moment compares equal',
-    () => assert.equal(compareCameraClocks(morning, exif('2026:08:27 08:00:00')), 0));
+    () => assert.equal(compareCameraClocks(morning, cameraClockFromExifText('2026:08:27 08:00:00')), 0));
   await context.test('two files with no clock compare equal', () => assert.equal(compareCameraClocks(null, null), 0));
 
   // The bug this replaced: both directions answered "after", so the sort was free to order
@@ -29,11 +28,15 @@ test('clocks compare as a total order', async (context) => {
 });
 
 test('the day a file is filed under', async (context) => {
-  const justAfterMidnight = exif('2026:08:28 01:30:00');
+  const justAfterMidnight = cameraClockFromExifText('2026:08:28 01:30:00');
   await context.test('by default the day turns at midnight',
     () => assert.equal(dayFolderFor(justAfterMidnight), '2026-08-28'));
   await context.test('--day-start 4 files the small hours with the evening before',
     () => assert.equal(dayFolderFor(justAfterMidnight, { hourTheDayStartsAt: 4 }), '2026-08-27'));
+  await context.test('a day starting in the evening files the afternoon before it with the day before', () => assert.ok(
+    dayFolderFor(cameraClockFrom(2026, 8, 28, 19, 0, 0), { hourTheDayStartsAt: 20 }) === '2026-08-27'
+    && dayFolderFor(cameraClockFrom(2026, 8, 28, 20, 0, 0), { hourTheDayStartsAt: 20 }) === '2026-08-28',
+  ));
   await context.test('a layout may nest the day inside its year',
     () => assert.equal(dayFolderFor(justAfterMidnight, { layout: '%Y/%F' }), '2026/2026-08-28'));
   await context.test('an unknown escape is left as it was written',

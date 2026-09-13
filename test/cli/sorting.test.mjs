@@ -4,11 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PANASONIC_RAW_SIGNATURE, tiffFile } from '../fixtures/tiff.mjs';
 import { jpegFile, jpegFilePaddedTo } from '../fixtures/jpeg.mjs';
-import { writeFixtureFile } from '../fixtures/cardDump.mjs';
-import {
-  EXIT_EVERYTHING_PLACED, filesAreIdentical, filesUnder, freshCardDump, runCommand, visibleFilesUnder,
-} from '../support/commandLine.mjs';
-import { aPathNotYetTaken, aTemporaryDirectory } from '../support/temporaryDirectories.mjs';
+import { EXIT_CODE } from '../../cli/usage.mjs';
+import { runCommand } from '../support/commandLine.mjs';
+import { aPathNotYetTaken, aTemporaryDirectory, freshCardDump } from '../support/temporaryDirectories.mjs';
+import { filesAreIdentical, filesUnder, visibleFilesUnder, writeFixtureFile } from '../support/files.mjs';
 
 test('sorting a card dump in place', async (context) => {
   const dump = freshCardDump('in-place');
@@ -51,25 +50,25 @@ test('sorting a card dump in place', async (context) => {
   await context.test('card folders emptied by the move are removed',
     () => assert.ok(!fs.existsSync(path.join(dump, 'DCIM'))));
   await context.test('a dry run says so and exits cleanly',
-    () => assert.ok(/dry run/.test(dryRun.standardOutput) && dryRun.exitCode === EXIT_EVERYTHING_PLACED));
+    () => assert.ok(/dry run/.test(dryRun.standardOutput) && dryRun.exitCode === EXIT_CODE.everythingPlaced));
   await context.test('a dry run predicts the same three days',
     () => assert.equal((dryRun.standardOutput.match(/^\d{4}-\d{2}-\d{2}/gm) ?? []).length, 3));
   await context.test('a dry run without --move says it would copy',
     () => assert.match(dryRun.standardOutput, /11 to copy/));
   await context.test('all eleven files are moved and it exits cleanly', () => assert.ok(
-    /11 moved/.test(sorted.standardOutput) && sorted.exitCode === EXIT_EVERYTHING_PLACED,
+    /11 moved/.test(sorted.standardOutput) && sorted.exitCode === EXIT_CODE.everythingPlaced,
     sorted.standardOutput + sorted.standardError,
   ));
 
   const secondRun = runCommand(['--move', dump]);
   await context.test('sorting the same folder twice changes nothing', () => assert.ok(
-    /11 already in place/.test(secondRun.standardOutput) && secondRun.exitCode === EXIT_EVERYTHING_PLACED,
-    String(secondRun.standardOutput),
+    /11 already in place/.test(secondRun.standardOutput) && secondRun.exitCode === EXIT_CODE.everythingPlaced,
+    secondRun.standardOutput,
   ));
   await context.test('and adds no files', () => assert.deepEqual(visibleFilesUnder(dump), expectedFiles));
 });
 
-test('two photos on one day sharing a name', async (context) => {
+test('sorting two photos of one day that share a name', async (context) => {
   const dump = aTemporaryDirectory('same-name');
   const morning = path.join(dump, 'DCIM', '100_PANA');
   const evening = path.join(dump, 'DCIM', '101_PANA');
@@ -87,7 +86,7 @@ test('two photos on one day sharing a name', async (context) => {
   await context.test('sorting them again leaves both subfolders exactly as they are', () => assert.ok(
     /2 already in place/.test(secondRun.standardOutput)
     && JSON.stringify(visibleFilesUnder(dump)) === JSON.stringify(['2026-09-01/01/A9999.RW2', '2026-09-01/02/A9999.RW2']),
-    String(secondRun.standardOutput),
+    secondRun.standardOutput,
   ));
 
   const identicalPair = aTemporaryDirectory('same-bytes');
@@ -214,7 +213,7 @@ test('the other ways to run it', async (context) => {
   const copied = runCommand(['--source', dump, '--dest', library, '--layout', '%Y/%F']);
 
   await context.test('--dest with --layout builds a library elsewhere', () => assert.ok(
-    filesUnder(library).includes('2026/2026-08-27/P1000002.JPG') && copied.exitCode === EXIT_EVERYTHING_PLACED,
+    filesUnder(library).includes('2026/2026-08-27/P1000002.JPG') && copied.exitCode === EXIT_CODE.everythingPlaced,
     copied.standardOutput + copied.standardError,
   ));
   await context.test('copying is the default, so the originals stay where they were',
@@ -225,7 +224,7 @@ test('the other ways to run it', async (context) => {
   const shortFlagRun = runCommand(['-s', dump, '-d', viaShortFlags]);
   await context.test('-s and -d name the source and the destination unambiguously', () => assert.ok(
     filesUnder(viaShortFlags).includes('2026-08-27/P1000002.JPG')
-    && shortFlagRun.exitCode === EXIT_EVERYTHING_PLACED,
+    && shortFlagRun.exitCode === EXIT_CODE.everythingPlaced,
     shortFlagRun.standardOutput + shortFlagRun.standardError,
   ));
 
@@ -273,5 +272,4 @@ test('the other ways to run it', async (context) => {
     new Set(parsed.actions.map((action) => action.dateFrom)).size >= 3,
     [...new Set(parsed.actions.map((action) => action.dateFrom))].join(', '),
   ));
-
 });

@@ -1,4 +1,4 @@
-import { bigEndianUInt16, bigEndianUInt32 } from './bytes.mjs';
+import { bigEndianUInt16, bigEndianUInt32 } from './bigEndian.mjs';
 import { EXIF_HEADER, TIFF_STANDARD_SIGNATURE, tiffFile } from './tiff.mjs';
 import { isoBox, isoFullBox } from './isoBaseMedia.mjs';
 

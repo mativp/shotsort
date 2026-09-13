@@ -1,4 +1,4 @@
-import { PADDING_CHUNK_BODY_BYTES } from './bytes.mjs';
+import { PADDING_CHUNK_BODY_BYTES } from './filler.mjs';
 import { TIFF_STANDARD_SIGNATURE, tiffFile } from './tiff.mjs';
 
 const PNG_SIGNATURE = '\x89PNG\r\n\x1a\n';

@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { cameraClockFromExifText as exif } from '../../src/clock.mjs';
 import { DATE_SOURCE } from '../../src/dateSource.mjs';
 import { FILESYSTEM_DATE_USE } from '../../src/dating.mjs';
 import { UNDATED_FOLDER_NAME, buildPlan } from '../../src/plan.mjs';
-import { candidate, exif, probeOver } from '../support/inMemory.mjs';
+import { candidate, probeOver } from '../support/inMemory.mjs';
 
 test('a file that records no date', async (context) => {
   const undated = candidate('/card/DCIM/CLIP.MTS', { fileTimestamp: new Date(2026, 7, 27, 14) });

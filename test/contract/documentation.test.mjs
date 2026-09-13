@@ -7,8 +7,6 @@ import { MEDIA_FILE_EXTENSIONS } from '../../src/extensions.mjs';
 import { UNDATED_FOLDER_NAME } from '../../src/plan.mjs';
 import { readProjectFile } from '../support/project.mjs';
 
-const LONG_OPTIONS_OF_OTHER_PROGRAMS_THE_README_QUOTES = ['--no-save'];
-
 const FACTS_TAKEN_FROM_THE_PROGRAM = [
   ['the hours a day may start at', `${EARLIEST_HOUR_A_DAY_MAY_START_AT} to ${LATEST_HOUR_A_DAY_MAY_START_AT}`],
   ['the default layout', DEFAULT_LAYOUT],
@@ -57,13 +55,14 @@ const SURFACES = {
     commandLines: sectionOf(manualPageSource, '.SH EXAMPLES', '\n.SH ').split('\n')
       .filter((line) => line.startsWith('.B shotsort')).map((line) => line.slice('.B '.length).replace(/\\-/g, '-')),
     exitStatuses: statusesListedIn(sectionOf(manualPageSource, '.SH EXIT STATUS', '\n.SH '), /^\.B (\d+)$/gm),
-    namesEveryExtension: true,
+    listOfFileTypes: sectionOf(manualPageSource, '.SH FILE TYPES', '\n.SH '),
   },
   'the README': {
     text: readme,
     commandLines: commandLinesInTheCodeBlocksOf(readme),
     exitStatuses: statusesListedIn(sectionOf(readme, '### Exit status', '\n#'), /^\| `(\d+)` \|/gm),
-    namesEveryExtension: true,
+    listOfFileTypes: sectionOf(readme, '## What it reads', '\n## '),
+    longOptionsOfOtherProgramsItQuotes: ['--no-save', '--no'],
   },
 };
 const THE_BRIEF_USAGE = { text: USAGE_IN_BRIEF, commandLines: commandLinesIndentedIn(USAGE_IN_BRIEF) };
@@ -75,7 +74,7 @@ const placeholdersGivenIn = (text) => [...text.replace(/`/g, '').matchAll(/(?<![
 const argumentsOf = (commandLine) => commandLine.split(/\s+/).slice(1).map((argument) => argument.replace(/^'(.*)'$/, '$1'));
 
 test('the options the documentation describes', async (context) => {
-  await context.test('the options the documentation is held to are the ones the program declares',
+  await context.test('the program declares options for the documentation to be held to',
     () => assert.ok(everyOptionName.length > 0));
 
   for (const [surfaceName, { text }] of Object.entries(SURFACES)) {
@@ -97,26 +96,26 @@ test('the options the documentation describes', async (context) => {
     });
   }
 
-  for (const [surfaceName, { text }] of [...Object.entries(SURFACES), ['the brief usage', THE_BRIEF_USAGE]]) {
+  for (const [surfaceName, { text, longOptionsOfOtherProgramsItQuotes = [] }] of [...Object.entries(SURFACES), ['the brief usage', THE_BRIEF_USAGE]]) {
     await context.test(`${surfaceName} names no option the program does not accept`, () => assert.deepEqual(
-      longOptionsNamedIn(text).filter((name) => !everyOptionName.includes(name) && !LONG_OPTIONS_OF_OTHER_PROGRAMS_THE_README_QUOTES.includes(name)),
+      longOptionsNamedIn(text).filter((name) => !everyOptionName.includes(name) && !longOptionsOfOtherProgramsItQuotes.includes(name)),
       [],
     ));
   }
 });
 
 test('the facts the documentation states', async (context) => {
-  for (const [surfaceName, { text, exitStatuses, namesEveryExtension }] of Object.entries(SURFACES)) {
+  for (const [surfaceName, { text, exitStatuses, listOfFileTypes }] of Object.entries(SURFACES)) {
     await context.test(`${surfaceName} states the values the program uses`, () => assert.deepEqual(
       FACTS_TAKEN_FROM_THE_PROGRAM.filter(([, value]) => !text.includes(value)).map(([fact, value]) => `${fact}: ${value}`),
       [],
     ));
     await context.test(`${surfaceName} explains exactly the exit statuses the program uses`,
       () => assert.deepEqual([...exitStatuses].sort(), Object.values(EXIT_CODE).sort()));
-    if (!namesEveryExtension) continue;
-    await context.test(`${surfaceName} names every kind of file the program reads`, () => assert.deepEqual(
+    if (listOfFileTypes === undefined) continue;
+    await context.test(`${surfaceName} names every kind of file the program reads in its list of file types`, () => assert.deepEqual(
       [...MEDIA_FILE_EXTENSIONS].map((extension) => extension.slice(1))
-        .filter((name) => !new RegExp(`(?<![A-Za-z0-9])${name}(?![A-Za-z0-9])`, 'i').test(text)),
+        .filter((name) => !new RegExp(`(?<![A-Za-z0-9])${name}(?![A-Za-z0-9])`).test(listOfFileTypes)),
       [],
     ));
   }

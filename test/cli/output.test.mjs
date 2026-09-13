@@ -4,11 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { jpegFile, jpegFilePaddedTo } from '../fixtures/jpeg.mjs';
-import { writeFixtureFile } from '../fixtures/cardDump.mjs';
-import {
-  COMMAND, EXIT_EVERYTHING_PLACED, EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND, freshCardDump, runCommand,
-} from '../support/commandLine.mjs';
-import { aPathNotYetTaken, aTemporaryDirectory } from '../support/temporaryDirectories.mjs';
+import { EXIT_CODE } from '../../cli/usage.mjs';
+import { COMMAND, runCommand } from '../support/commandLine.mjs';
+import { THE_PLATFORM_PIPES_OUTPUT_THE_UNIX_WAY } from '../support/platform.mjs';
+import { aPathNotYetTaken, aTemporaryDirectory, freshCardDump } from '../support/temporaryDirectories.mjs';
+import { writeFixtureFile } from '../support/files.mjs';
 
 test('the summary the user reads', async (context) => {
   const dump = aTemporaryDirectory('summary');
@@ -37,7 +37,7 @@ test('the summary the user reads', async (context) => {
     () => assert.match(rowFor('2026-01-01'), / {4}1 file {2}/));
   await context.test('a day holding two says files, and their sizes are added', () => assert.ok(
     / {4}2 files/.test(rowFor('2026-01-05')) && /\s2\.0 KB$/.test(rowFor('2026-01-05')),
-    String(rowFor('2026-01-05')),
+    rowFor('2026-01-05'),
   ));
   await context.test('a day dated only by the filesystem is marked with a tilde',
     () => assert.match(rowFor('2026-01-06'), /^2026-01-06 ~ /));
@@ -66,7 +66,7 @@ test('the quiet and verbose switches', async (context) => {
   const quietly = freshCardDump('quiet');
   const quietRun = runCommand(['-q', quietly]);
   await context.test('--quiet prints nothing at all on a run that succeeds', () => assert.ok(
-    quietRun.standardOutput === '' && quietRun.exitCode === EXIT_EVERYTHING_PLACED,
+    quietRun.standardOutput === '' && quietRun.exitCode === EXIT_CODE.everythingPlaced,
     JSON.stringify(quietRun.standardOutput),
   ));
   await context.test('and still does the sorting',
@@ -76,7 +76,7 @@ test('the quiet and verbose switches', async (context) => {
   const clusteredRun = runCommand(['-nq', clustered]);
   await context.test('clustered short options combine, so -nq is -n and -q together', () => assert.ok(
     clusteredRun.standardOutput === ''
-    && clusteredRun.exitCode === EXIT_EVERYTHING_PLACED
+    && clusteredRun.exitCode === EXIT_CODE.everythingPlaced
     && fs.existsSync(path.join(clustered, 'DCIM', '100_PANA', 'P1000001.JPG')),
     JSON.stringify(clusteredRun.standardOutput),
   ));
@@ -86,14 +86,14 @@ test('the quiet and verbose switches', async (context) => {
   await context.test('--dry-run spelled out does the same as -n', () => assert.ok(
     /\(dry run\)$/m.test(longFormRun.standardOutput)
     && fs.existsSync(path.join(longForm, 'DCIM', '100_PANA', 'P1000001.JPG')),
-    String(longFormRun.standardOutput),
+    longFormRun.standardOutput,
   ));
 
   const valueLast = freshCardDump('value-last');
   const valueLastDestination = aPathNotYetTaken('value-last-library');
   const valueLastRun = runCommand(['-nd', valueLastDestination, valueLast]);
   await context.test('a value-taking short option may end a cluster, so -nd DIR is -n -d DIR', () => assert.ok(
-    /\(dry run\)$/m.test(valueLastRun.standardOutput) && valueLastRun.exitCode === EXIT_EVERYTHING_PLACED,
+    /\(dry run\)$/m.test(valueLastRun.standardOutput) && valueLastRun.exitCode === EXIT_CODE.everythingPlaced,
     valueLastRun.standardOutput + valueLastRun.standardError,
   ));
 
@@ -131,11 +131,11 @@ test('the progress line never reaches anything but a terminal', async (context) 
   const drawnInto = (printed) => drawingCharacters.some((character) => printed.includes(character));
 
   await context.test('a copy whose output is captured carries no progress line, neither drawn nor taken down', () => assert.ok(
-    copied.exitCode === EXIT_EVERYTHING_PLACED && !drawnInto(copied.standardError) && !drawnInto(copied.standardOutput),
+    copied.exitCode === EXIT_CODE.everythingPlaced && !drawnInto(copied.standardError) && !drawnInto(copied.standardOutput),
     JSON.stringify(copied.standardError),
   ));
   await context.test('and nor does a --verbose move, the one run that prints above the line', () => assert.ok(
-    verboseMove.exitCode === EXIT_EVERYTHING_PLACED
+    verboseMove.exitCode === EXIT_CODE.everythingPlaced
     && !drawnInto(verboseMove.standardError) && !drawnInto(verboseMove.standardOutput),
     JSON.stringify(verboseMove.standardError),
   ));
@@ -146,10 +146,10 @@ test('a card with nothing on it and a machine reading the answer', async (contex
   const asJson = runCommand(['--json', empty]);
 
   await context.test('an empty card still answers in json when json was asked for',
-    () => assert.equal(asJson.exitCode, EXIT_SOMETHING_FAILED_OR_NOTHING_FOUND));
+    () => assert.equal(asJson.exitCode, EXIT_CODE.somethingFailedOrNothingFound));
   const said = JSON.parse(asJson.standardOutput);
   await context.test('and the answer says plainly that it found nothing',
-    () => assert.ok(said.summary.found === 0 && said.actions.length === 0, String(asJson.standardOutput)));
+    () => assert.ok(said.summary.found === 0 && said.actions.length === 0, asJson.standardOutput));
   await context.test('rather than printing a sentence a script would have to read',
     () => assert.equal(asJson.standardError, ''));
 });
@@ -160,8 +160,14 @@ test('a card with nothing on it and a machine reading the answer', async (contex
 const FILES_ENOUGH_TO_FILL_A_PIPE = 700;
 
 test('output cut off by something reading it', {
-  skip: process.platform === 'win32' && 'this shell does not pipe the way the check needs',
+  skip: !THE_PLATFORM_PIPES_OUTPUT_THE_UNIX_WAY && 'this platform does not pipe output the Unix way',
 }, async (context) => {
+  const throughAPipe = spawnSync('sh', ['-c', `${JSON.stringify(process.execPath)} ${JSON.stringify(COMMAND)} --help | head -3`], { encoding: 'utf8' });
+  await context.test('closing the pipe early is not an error, as with any unix tool', () => assert.ok(
+    throughAPipe.status === 0 && throughAPipe.stderr === '',
+    `status ${throughAPipe.status}: ${throughAPipe.stderr}`,
+  ));
+
   // `shotsort --json card | head -1` closes the pipe the moment it has its line. Writing to
   // a pipe nobody is reading is an error, and one the run must take as its cue to stop
   // rather than as a fault to report.
@@ -174,11 +180,11 @@ test('output cut off by something reading it', {
   // pipefail so the answer is the program's own rather than the exit status of whatever
   // was reading it.
   const pipeline = spawnSync('bash', ['-c',
-    `set -o pipefail; node ${JSON.stringify(COMMAND)} --json -n ${JSON.stringify(dump)} | head -1`],
+    `set -o pipefail; ${JSON.stringify(process.execPath)} ${JSON.stringify(COMMAND)} --json -n ${JSON.stringify(dump)} | head -1`],
   { encoding: 'utf8' });
 
   await context.test('output cut off by something reading only the start of it is not an error',
-    () => assert.equal(pipeline.status, EXIT_EVERYTHING_PLACED));
+    () => assert.equal(pipeline.status, EXIT_CODE.everythingPlaced));
   await context.test('and nothing is said about the broken pipe',
     () => assert.doesNotMatch(pipeline.stderr ?? '', /EPIPE/));
 });

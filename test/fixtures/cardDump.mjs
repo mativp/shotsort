@@ -1,8 +1,9 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { PANASONIC_RAW_SIGNATURE, tiffFile } from './tiff.mjs';
-import { jpegFile, panasonicRawWithDateOnlyInEmbeddedJpeg } from './jpeg.mjs';
+import { jpegFile } from './jpeg.mjs';
+import { panasonicRawWithDateOnlyInEmbeddedJpeg } from './panasonic.mjs';
 import { movieFile } from './quicktime.mjs';
+import { writeFixtureFile } from '../support/files.mjs';
 
 const PRETEND_HLG_PHOTO_FILL_BYTE = 3;
 const BYTES_IN_PRETEND_HLG_PHOTO = 64;
@@ -12,12 +13,6 @@ const BYTES_IN_PRETEND_AVCHD_CLIP = 2048;
 const BYTES_IN_PRETEND_CLIP_INFO_SIDECAR = 64;
 const BYTES_MAKING_THE_SECOND_PHOTO_DIFFERENT = 64;
 const SECOND_PHOTO_FILL_BYTE = 9;
-
-export function writeFixtureFile(filePath, contents, fileTimestamp) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, contents);
-  if (fileTimestamp) fs.utimesSync(filePath, fileTimestamp, fileTimestamp);
-}
 
 export function buildCardDump(directory, { everyFileStampedAt = null } = {}) {
   const stampFor = (whenItWasShot) => new Date(everyFileStampedAt ?? whenItWasShot);

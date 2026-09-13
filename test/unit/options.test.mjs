@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraClockFrom, dayFolderFor } from '../../src/clock.mjs';
 import { WHAT_TO_DO, decideWhatToDo } from '../../cli/options.mjs';
 
-test('the command line is read without starting a process', async (context) => {
+test('reading the command line', async (context) => {
   await context.test('clustered short options are each applied', () => assert.ok(
     decideWhatToDo(['-nvm', '/card']).options.dryRun === true
     && decideWhatToDo(['-nvm', '/card']).options.verbose === true
@@ -27,18 +26,16 @@ test('the command line is read without starting a process', async (context) => {
     [0, 4, 12, 13, 23].every((hour) =>
       decideWhatToDo(['--day-start', String(hour), '/card']).whatToDo === WHAT_TO_DO.sort),
   ));
-  await context.test('a day starting in the evening files the afternoon before it with the day before', () => assert.ok(
-    dayFolderFor(cameraClockFrom(2026, 8, 28, 19, 0, 0), { hourTheDayStartsAt: 20 }) === '2026-08-27'
-    && dayFolderFor(cameraClockFrom(2026, 8, 28, 20, 0, 0), { hourTheDayStartsAt: 20 }) === '2026-08-28',
+  await context.test('--day-start that is not a whole number is refused', () => assert.equal(
+    decideWhatToDo(['--day-start', 'noon', '/card']).problem,
+    '--day-start must be an hour from 0 to 23',
   ));
-  await context.test('--day-start that is not a whole number is refused',
-    () => assert.notEqual(decideWhatToDo(['--day-start', 'noon', '/card']).problem, undefined));
   await context.test('naming no folder to sort is refused',
     () => assert.ok(decideWhatToDo(['-n']).problem.startsWith('name the folder to sort')));
   await context.test('and the refusal shows how, leading with the folder you are standing in', () => assert.ok(
     /^ {2}shotsort \. +the folder you are standing in$/m.test(decideWhatToDo(['-n']).problem)
     && /^ {2}shotsort ~\/Import +a folder named in full$/m.test(decideWhatToDo(['-n']).problem),
-    String(decideWhatToDo(['-n']).problem),
+    decideWhatToDo(['-n']).problem,
   ));
   await context.test('an unrecognised short option is refused by name',
     () => assert.match(decideWhatToDo(['-Z']).problem, /unrecognised option '-Z'/));

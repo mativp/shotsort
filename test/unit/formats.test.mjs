@@ -27,17 +27,16 @@ import { redcodeClip } from '../fixtures/redcode.mjs';
 import { everyFixtureFormatIsBuiltFrom } from '../fixtures/catalogue.mjs';
 import { byteSourceForBuffer } from '../../src/bytes.mjs';
 import { FORMATS_IN_THE_ORDER_THEY_ARE_TRIED } from '../../src/formats/registry.mjs';
-import { formatCameraClock } from '../../src/clock.mjs';
 import { DATE_SOURCE } from '../../src/dateSource.mjs';
 import { clockInside, clockTextInside } from '../support/inMemory.mjs';
 
-test('a parser reads bytes with no file under them', async (context) => {
+test('reading a date out of bytes', async (context) => {
   await context.test('a JPEG is read straight out of a Buffer',
-    () => assert.equal(formatCameraClock(clockInside(jpegFile('2026:08:27 10:30:00')).clock), '2026-08-27 10:30:00'));
+    () => assert.equal(clockTextInside(jpegFile('2026:08:27 10:30:00')), '2026-08-27 10:30:00'));
   await context.test('and the date is marked as having come from inside the file',
     () => assert.equal(clockInside(jpegFile('2026:08:27 10:30:00')).source, DATE_SOURCE.exifMetadata));
   await context.test('a Panasonic raw is read the same way', () => assert.equal(
-    formatCameraClock(clockInside(tiffFile({ signature: PANASONIC_RAW_SIGNATURE, dateTimeOriginal: '2026:08:27 11:00:00' })).clock),
+    clockTextInside(tiffFile({ signature: PANASONIC_RAW_SIGNATURE, dateTimeOriginal: '2026:08:27 11:00:00' })),
     '2026-08-27 11:00:00',
   ));
   await context.test('a movie is marked as having come from a video header, not from Exif',
@@ -57,11 +56,11 @@ test('the clips off a tape camcorder', async (context) => {
   // A DV clip writes its year as two digits, so which century it is in has to be decided.
   // Tape camcorders were sold through both, and a file from either has to land in its own.
   await context.test('a tape shot in the nineties is filed in the nineteen hundreds', () => assert.equal(
-    formatCameraClock(clockInside(digitalVideoClip('1997-03-04 05:06:07')).clock),
+    clockTextInside(digitalVideoClip('1997-03-04 05:06:07')),
     '1997-03-04 05:06:07',
   ));
   await context.test('and one shot since is filed in the two thousands', () => assert.equal(
-    formatCameraClock(clockInside(digitalVideoClip('2021-03-04 05:06:07')).clock),
+    clockTextInside(digitalVideoClip('2021-03-04 05:06:07')),
     '2021-03-04 05:06:07',
   ));
 });
@@ -96,34 +95,28 @@ test('every reader refuses a file that is not its format', async (context) => {
 
 test('containers that are legal but unusual', async (context) => {
   await context.test('a jpeg whose first marker carries no length is still read', () => assert.equal(
-    formatCameraClock(clockInside(jpegFileWithARestartMarkerFirst('2026:07:04 08:00:00')).clock),
+    clockTextInside(jpegFileWithARestartMarkerFirst('2026:07:04 08:00:00')),
     '2026-07-04 08:00:00',
   ));
   await context.test('a movie box declaring that it runs to the end of the file is still read', () => assert.equal(
-    formatCameraClock(clockInside(movieFileWhoseMovieBoxRunsToTheEnd('2026-07-04 10:00:00')).clock),
+    clockTextInside(movieFileWhoseMovieBoxRunsToTheEnd('2026-07-04 10:00:00')),
     '2026-07-04 10:00:00',
   ));
   await context.test('a jpeg hiding its exif behind more segments than are worth walking gives up rather than hanging',
     () => assert.equal(clockInside(jpegFileBuriedUnderManySegments('2026:07:04 09:00:00')), null));
-
 });
 
-test('the raw every maker writes', async (context) => {
-  const ordinaryTiff = (dateTimeOriginal) => tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal });
-  const olympusRaw = (signature, dateTimeOriginal) => tiffFile({ signature, dateTimeOriginal });
-
-  const rawFromEachMaker = [
-    ['a Canon CR2', ordinaryTiff('2026:08:27 09:00:00'), '2026-08-27 09:00:00'],
-    ['a Nikon NEF', ordinaryTiff('2026:08:27 09:01:00'), '2026-08-27 09:01:00'],
-    ['a Nikon NRW', ordinaryTiff('2026:08:27 09:02:00'), '2026-08-27 09:02:00'],
-    ['a Sony ARW', ordinaryTiff('2026:08:27 09:03:00'), '2026-08-27 09:03:00'],
-    ['a Pentax PEF', ordinaryTiff('2026:08:27 09:04:00'), '2026-08-27 09:04:00'],
-    ['an Olympus ORF', olympusRaw(OLYMPUS_RAW_SIGNATURE, '2026:08:27 09:05:00'), '2026-08-27 09:05:00'],
-    ['an OM System ORF', olympusRaw(OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES, '2026:08:27 09:06:00'), '2026-08-27 09:06:00'],
+test('the raw written as a TIFF', async (context) => {
+  const rawBySignature = [
+    ['a raw with the standard TIFF signature, as Canon, Nikon, Sony and Pentax write it', TIFF_STANDARD_SIGNATURE],
+    ['an Olympus ORF, whose signature is its own', OLYMPUS_RAW_SIGNATURE],
+    ['an OM System ORF, whose later bodies changed that signature again', OLYMPUS_RAW_SIGNATURE_ON_LATER_BODIES],
   ];
-  for (const [whatItIs, contents, whenItWasShot] of rawFromEachMaker) {
-    await context.test(`${whatItIs} is read for the date the camera wrote in it`,
-      () => assert.equal(clockTextInside(contents), whenItWasShot));
+  for (const [whatItIs, signature] of rawBySignature) {
+    await context.test(`${whatItIs} is read for the date the camera wrote in it`, () => assert.equal(
+      clockTextInside(tiffFile({ signature, dateTimeOriginal: '2026:08:27 09:05:00' })),
+      '2026-08-27 09:05:00',
+    ));
   }
 
   await context.test('a raw written most significant byte first is read the same as one written the other way round',
@@ -156,7 +149,8 @@ test('the formats that are built some other way', async (context) => {
     ['a windows media clip', windowsMediaMovie('2026-08-27 10:07:00'), '2026-08-27 10:07:00'],
     ['a tape camcorder clip', digitalVideoClip('2026-08-27 10:08:00'), '2026-08-27 10:08:00'],
     ['a cinema camera take', redcodeClip('2026-08-27 10:10:00'), '2026-08-27 10:10:00'],
-    ['a cinema camera take whose header does not say where its directory is', redcodeClip('2026-08-27 10:11:00', { headerSaysWhereTheDirectoryIs: false }), '2026-08-27 10:11:00'],
+    ['a cinema camera take whose header does not say where its directory is',
+      redcodeClip('2026-08-27 10:11:00', { headerSaysWhereTheDirectoryIs: false }), '2026-08-27 10:11:00'],
     ['a png dated only by when it was written', pngStillDatedOnlyByWhenItWasLastWritten('2026-08-27 10:09:00'), '2026-08-27 10:09:00'],
   ];
   for (const [whatItIs, contents, whenItWasShot] of eachOne) {
@@ -173,8 +167,6 @@ test('the containers that hold their Exif somewhere else', async (context) => {
   const whenItWasShot = '2026-08-27 09:07:01';
 
   await context.test('a Canon CR3 is read from the Exif Canon buries in moov/uuid/CMT2',
-    () => assert.equal(clockTextInside(canonRawFile(shotAt)), whenItWasShot));
-  await context.test('a Canon CRM, which is the same container, is read the same way',
     () => assert.equal(clockTextInside(canonRawFile(shotAt)), whenItWasShot));
   await context.test('a Fujifilm RAF is read from the JPEG its header points at',
     () => assert.equal(clockTextInside(fujifilmRawFile(shotAt)), whenItWasShot));

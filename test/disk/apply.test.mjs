@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { jpegFile } from '../fixtures/jpeg.mjs';
 import { movieFile } from '../fixtures/quicktime.mjs';
-import { writeFixtureFile } from '../fixtures/cardDump.mjs';
 import { NO_FREE_NAME_IN_THE_DAY_FOLDER, PLACEMENT } from '../../src/plan.mjs';
 import { applyPlan } from '../../src/apply.mjs';
 import { aDirectoryHolding } from '../support/temporaryDirectories.mjs';
+import { writeFixtureFile } from '../support/files.mjs';
 
 // Every way carrying out a plan can go wrong, which is the half of the program a real disk
 // will not perform on demand: a rename that crosses a disk boundary, a copy that comes up
@@ -300,11 +300,14 @@ test('each file is announced before and after it is placed', async (context) => 
     anEntryFor(path.join(disk, 'DCIM', 'P3.JPG'), null, PLACEMENT.couldNotBePlaced),
   ], { onFileStarted: hear('started'), onFilePlaced: hear('placed'), onFileFinished: hear('finished') });
 
-  await context.test('every file is announced before anything is done with it and again once it is over, even one whose copy is refused', () => assert.equal(
-    heard.join(', '),
-    'started P1.JPG, placed P1.JPG, finished P1.JPG, '
-+ 'started P2.JPG, finished P2.JPG, started P3.JPG, finished P3.JPG',
-  ));
+  await context.test(
+    'every file is announced before anything is done with it and again once it is over, even one whose copy is refused',
+    () => assert.deepEqual(heard, [
+      'started P1.JPG', 'placed P1.JPG', 'finished P1.JPG',
+      'started P2.JPG', 'finished P2.JPG',
+      'started P3.JPG', 'finished P3.JPG',
+    ]),
+  );
 });
 
 test('tidying up folders it cannot read', async (context) => {

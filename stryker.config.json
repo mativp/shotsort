@@ -1,10 +1,10 @@
 {
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "_comment": "Mutation testing is run by hand, not in CI: a run takes minutes where the suite takes seconds. Stryker is not a dependency of this package and is not in the manifest -- `npm install --no-save @stryker-mutator/core`, then `npx stryker run`. A surviving mutant is a line the suite runs but does not check, and is treated as a real gap. Each module is put to the cheapest suite that exercises it: the ones that decide things have no filesystem under them and are killed by the unit suite alone. The modules whose job is the disk are mutated by stryker.disk.json against the disk and command line suites. Both run through test/runUntilTheFirstFailure.mjs, which stops at the first failed test, since one is enough to settle a mutant.",
+  "_comment": "Mutation testing is run by hand, not in CI: a full run takes hours where the suite takes seconds. Stryker is not a dependency of this package and is not in the manifest -- `npm install --no-save @stryker-mutator/core` (again after any `npm ci`, which removes it), then `npx --no stryker run`, where `--no` keeps npx from fetching the unrelated `stryker` package instead. A surviving mutant is a line the suite runs but does not check, and is treated as a real gap. Each module is put to the cheapest suite that exercises it: the ones that decide things have no filesystem under them and are killed by the unit suite alone. The modules whose job is the disk are mutated by stryker.disk.json against the disk and command line suites. Both run through test/runUntilTheFirstFailure.mjs, which stops at the first failed test, since one is enough to settle a mutant.",
   "packageManager": "npm",
   "testRunner": "command",
   "commandRunner": {
-    "command": "node test/runUntilTheFirstFailure.mjs unit"
+    "command": "node test/runUntilTheFirstFailure.mjs unit contract/catalogue.test.mjs contract/documentation.test.mjs"
   },
   "mutate": [
     "src/formats/**/*.mjs",
