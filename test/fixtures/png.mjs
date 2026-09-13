@@ -32,29 +32,27 @@ function pngChunk(chunkType, body) {
 const SMALLEST_PNG_HEADER = Buffer.from([0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0]);
 const SHORTEST_DEFLATE_STREAM = Buffer.from([0x78, 0x9c, 0x62, 0x60, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01]);
 
-function pngFileHolding(chunksBeforeTheImage) {
+export function pngFileHolding(chunksBeforeTheImage, { chunksAfterTheImage = [] } = {}) {
   return Buffer.concat([
     Buffer.from(PNG_SIGNATURE, 'latin1'),
     pngChunk('IHDR', SMALLEST_PNG_HEADER),
     ...chunksBeforeTheImage,
     pngChunk('IDAT', SHORTEST_DEFLATE_STREAM),
+    ...chunksAfterTheImage,
     pngChunk('IEND', Buffer.alloc(0)),
   ]);
 }
 
-export function pngStill(dateTimeOriginal) {
-  return pngFileHolding([
-    pngChunk('eXIf', tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal })),
-  ]);
-}
+export const pngExifChunk = (dateTimeOriginal) =>
+  pngChunk('eXIf', tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal }));
 
-export function pngStillDatedOnlyInItsText(dateWrittenOut) {
-  return pngFileHolding([
-    pngChunk('tEXt', Buffer.from(`Creation Time\0${dateWrittenOut}`, 'latin1')),
-  ]);
-}
+// iTXt puts a compression flag, a compression method, a language tag and a translated
+// keyword between the keyword and the text.
+export const pngTextChunk = (keyword, text, { international = false } = {}) => (international
+  ? pngChunk('iTXt', Buffer.from(`${keyword}\0\0\0en\0${keyword}\0${text}`, 'latin1'))
+  : pngChunk('tEXt', Buffer.from(`${keyword}\0${text}`, 'latin1')));
 
-export function pngStillDatedOnlyByWhenItWasLastWritten(cameraClock) {
+export function pngLastWrittenChunk(cameraClock, chunkType = 'tIME') {
   const [year, month, day, hour, minute, second] = cameraClock.split(/[-: ]/).map(Number);
   const lastWritten = Buffer.alloc(7);
   lastWritten.writeUInt16BE(year, 0);
@@ -63,15 +61,21 @@ export function pngStillDatedOnlyByWhenItWasLastWritten(cameraClock) {
   lastWritten[4] = hour;
   lastWritten[5] = minute;
   lastWritten[6] = second;
-  return pngFileHolding([pngChunk('tIME', lastWritten)]);
+  return pngChunk(chunkType, lastWritten);
 }
+
+export const pngPaddingChunks = (howMany) =>
+  Array.from({ length: howMany }, () => pngChunk('gAMA', Buffer.alloc(PADDING_CHUNK_BODY_BYTES)));
+
+export const pngStill = (dateTimeOriginal) => pngFileHolding([pngExifChunk(dateTimeOriginal)]);
+
+export const pngStillDatedOnlyInItsText = (dateWrittenOut) =>
+  pngFileHolding([pngTextChunk('Creation Time', dateWrittenOut)]);
+
+export const pngStillDatedOnlyByWhenItWasLastWritten = (cameraClock) =>
+  pngFileHolding([pngLastWrittenChunk(cameraClock)]);
 
 const CHUNKS_MORE_THAN_A_PNG_WALK_LOOKS_THROUGH = 300;
 
-export function pngStillBuriedUnderMoreChunksThanAreWalked(dateTimeOriginal) {
-  const padding = Array.from({ length: CHUNKS_MORE_THAN_A_PNG_WALK_LOOKS_THROUGH },
-    () => pngChunk('gAMA', Buffer.alloc(PADDING_CHUNK_BODY_BYTES)));
-  return pngFileHolding([...padding, pngChunk('eXIf', tiffFile({
-    signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal,
-  }))]);
-}
+export const pngStillBuriedUnderMoreChunksThanAreWalked = (dateTimeOriginal) =>
+  pngFileHolding([...pngPaddingChunks(CHUNKS_MORE_THAN_A_PNG_WALK_LOOKS_THROUGH), pngExifChunk(dateTimeOriginal)]);

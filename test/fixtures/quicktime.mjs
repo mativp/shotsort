@@ -38,15 +38,16 @@ function movieHeaderBox(cameraClock, creationTimeIs64Bit) {
 
 export function movieFile(cameraClock, {
   creationTimeIs64Bit = false, videoDataUses64BitBoxSize = false,
-  extraUserData = null, extraMovieBoxes = null,
+  extraUserData = null, extraMovieBoxes = null, userDataEndsTheFile = false,
 } = {}) {
   const videoData = Buffer.alloc(BYTES_OF_PRETEND_VIDEO_DATA, PRETEND_VIDEO_DATA_FILL_BYTE);
+  const userData = isoBox('udta', extraUserData ?? Buffer.alloc(16));
+  const movieHeader = movieHeaderBox(cameraClock, creationTimeIs64Bit);
   return Buffer.concat([
     isoBox('ftyp', Buffer.from('mp42mp42isom', 'latin1')),
     videoDataUses64BitBoxSize ? isoBoxWith64BitSize('mdat', videoData) : isoBox('mdat', videoData),
     isoBox('moov', Buffer.concat([
-      isoBox('udta', extraUserData ?? Buffer.alloc(16)),
-      movieHeaderBox(cameraClock, creationTimeIs64Bit),
+      ...(userDataEndsTheFile ? [movieHeader, userData] : [userData, movieHeader]),
       ...(extraMovieBoxes === null ? [] : [extraMovieBoxes]),
     ])),
   ]);
@@ -64,16 +65,17 @@ const APPLE_CREATION_DATE_KEY = 'com.apple.quicktime.creationdate';
 const METADATA_KEY_NAMESPACE = 'mdta';
 const BYTES_IN_A_METADATA_KEY_HEADER = 8;
 
-export function movieFileSayingWhichZoneItsClockIsIn(mvhdClock, spelledOutDate) {
-  const creationDate = isoBox('\u00a9day', Buffer.concat([
-    bigEndianUInt16(spelledOutDate.length), bigEndianUInt16(0), Buffer.from(spelledOutDate, 'latin1'),
-  ]));
-  return movieFile(mvhdClock, { extraUserData: creationDate });
-}
+export const quickTimeCreationDateBox = (spelledOutDate) => isoBox('\u00a9day', Buffer.concat([
+  bigEndianUInt16(spelledOutDate.length), bigEndianUInt16(0), Buffer.from(spelledOutDate, 'latin1'),
+]));
 
-export function movieFileCarryingACanonThumbnail(mvhdClock, dateTimeOriginal) {
-  return movieFile(mvhdClock, { extraUserData: isoBox('CNTH', isoBox('CNDA', jpegFile(dateTimeOriginal))) });
-}
+export const movieFileSayingWhichZoneItsClockIsIn = (mvhdClock, spelledOutDate) =>
+  movieFile(mvhdClock, { extraUserData: quickTimeCreationDateBox(spelledOutDate) });
+
+export const canonThumbnailBox = (jpeg) => isoBox('CNTH', isoBox('CNDA', jpeg));
+
+export const movieFileCarryingACanonThumbnail = (mvhdClock, dateTimeOriginal) =>
+  movieFile(mvhdClock, { extraUserData: canonThumbnailBox(jpegFile(dateTimeOriginal)) });
 
 // A handler box says what kind of metadata follows it, and Apple's keys are only read as
 // Apple's keys when the handler names them: version and flags, four reserved bytes, then
@@ -90,21 +92,32 @@ function metadataHandlerNaming(handler) {
 
 // Apple writes the QuickTime metadata box, which goes straight to its children; an MP4
 // writes the ISO one, which puts a version and flags in front of them first.
-export function movieFileWithAnAppleCreationDate(mvhdClock, spelledOutDate, { isoStyleMetadataBox = false } = {}) {
-  const keyName = Buffer.from(APPLE_CREATION_DATE_KEY, 'latin1');
-  const keys = isoFullBox('keys', 0, Buffer.concat([
-    bigEndianUInt32(1),
-    bigEndianUInt32(BYTES_IN_A_METADATA_KEY_HEADER + keyName.length),
-    Buffer.from(METADATA_KEY_NAMESPACE, 'latin1'), keyName,
-  ]));
-  const value = isoBox('data', Buffer.concat([
+export function appleMetadataKey(keyName = APPLE_CREATION_DATE_KEY, { declaredSize } = {}) {
+  const name = Buffer.from(keyName, 'latin1');
+  return Buffer.concat([
+    bigEndianUInt32(declaredSize ?? BYTES_IN_A_METADATA_KEY_HEADER + name.length),
+    Buffer.from(METADATA_KEY_NAMESPACE, 'latin1'), name,
+  ]);
+}
+
+export const appleMetadataKeysBox = (keys, declaredCount = keys.length) =>
+  isoFullBox('keys', 0, Buffer.concat([bigEndianUInt32(declaredCount), ...keys]));
+
+export const appleMetadataItemList = (itemsByKeyIndex) => isoBox('ilst', Buffer.concat(
+  itemsByKeyIndex.map(([keyIndex, spelledOutDate]) => isoBox(bigEndianUInt32(keyIndex).toString('latin1'), isoBox('data', Buffer.concat([
     bigEndianUInt32(1), bigEndianUInt32(0), Buffer.from(spelledOutDate, 'latin1'),
-  ]));
-  const itemList = isoBox('ilst', isoBox(bigEndianUInt32(1).toString('latin1'), value));
-  const children = Buffer.concat([isoBox('hdlr', metadataHandlerNaming(APPLE_METADATA_HANDLER)), keys, itemList]);
+  ])))),
+));
+
+export function movieFileWithAppleMetadata(mvhdClock, keysBox, itemList, { isoStyleMetadataBox = false } = {}) {
+  const children = Buffer.concat([isoBox('hdlr', metadataHandlerNaming(APPLE_METADATA_HANDLER)), keysBox, itemList]);
   const metadata = isoStyleMetadataBox ? isoFullBox('meta', 0, children) : isoBox('meta', children);
   return movieFile(mvhdClock, { extraMovieBoxes: metadata });
 }
+
+export const movieFileWithAnAppleCreationDate = (mvhdClock, spelledOutDate, layout) => movieFileWithAppleMetadata(
+  mvhdClock, appleMetadataKeysBox([appleMetadataKey()]), appleMetadataItemList([[1, spelledOutDate]]), layout,
+);
 
 const A_BOX_SIZE_SMALLER_THAN_THE_HEADER_IT_IS_WRITTEN_IN = 4;
 

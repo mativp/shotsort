@@ -5,8 +5,9 @@ import {
   TIFF_VALUE_TYPE_LONG, bigEndianTiffFile, bigTiffFile, tiffFile,
 } from '../fixtures/tiff.mjs';
 import {
-  jpegFile, jpegFileBehindAsManySegmentsAsAPhotoReallyHas, jpegFileBuriedUnderManySegments,
-  jpegFileWithARestartMarkerFirst,
+  JPEG_MARKER_APP0_JFIF, JPEG_MARKER_APP1_EXIF, JPEG_MARKER_END_OF_IMAGE, JPEG_MARKER_START_OF_IMAGE,
+  JPEG_MARKER_START_OF_SCAN, jpegExifBody, jpegFile, jpegFileBehindAsManySegmentsAsAPhotoReallyHas,
+  jpegFileBehindCommentSegments, jpegFileBuriedUnderManySegments, jpegFileWithARestartMarkerFirst, jpegMarker, jpegSegment,
 } from '../fixtures/jpeg.mjs';
 import {
   movieFile, movieFileCarryingACanonThumbnail, movieFileSayingWhichZoneItsClockIsIn,
@@ -18,10 +19,15 @@ import { fujifilmRawFile } from '../fixtures/fujifilm.mjs';
 import { minoltaRawFile } from '../fixtures/minolta.mjs';
 import { sigmaRawFile } from '../fixtures/sigma.mjs';
 import { aviFileRecordingWhenItWasShot, aviFileSayingOnlyWhenItWasCreated, webPStill } from '../fixtures/riff.mjs';
-import { pngStill, pngStillDatedOnlyByWhenItWasLastWritten, pngStillDatedOnlyInItsText } from '../fixtures/png.mjs';
+import {
+  pngExifChunk, pngFileHolding, pngLastWrittenChunk, pngPaddingChunks, pngStill, pngStillDatedOnlyByWhenItWasLastWritten,
+  pngStillDatedOnlyInItsText, pngTextChunk,
+} from '../fixtures/png.mjs';
 import { matroskaMovie } from '../fixtures/matroska.mjs';
 import { windowsMediaMovie } from '../fixtures/asf.mjs';
-import { BYTES_IN_THE_JPEG_XL_SIGNATURE_BOX, jpegXlStill } from '../fixtures/jpegXl.mjs';
+import {
+  BYTES_IN_THE_JPEG_XL_SIGNATURE_BOX, jpegXlStill, jpegXlStillWhoseShortExifBoxEndsTheFile,
+} from '../fixtures/jpegXl.mjs';
 import { digitalVideoClip } from '../fixtures/digitalVideo.mjs';
 import { redcodeClip } from '../fixtures/redcode.mjs';
 import { everyFixtureFormatIsBuiltFrom } from '../fixtures/catalogue.mjs';
@@ -77,6 +83,11 @@ test('the mark on a file is the last word on it', async (context) => {
   await context.test('nor is a JPEG XL with no Exif, though it is built of the same boxes a movie is and carries a movie box',
     () => assert.equal(clockInside(jpegXlCarryingAMovieBoxButNoExif), null));
 });
+
+// The image header is the first chunk walked.
+const MOST_PNG_CHUNKS_WALKED = 256;
+// The JFIF segment comes between the comments and the Exif.
+const MOST_JPEG_SEGMENTS_WALKED = 4096;
 
 // The last byte of the mark is the one broken, so everything after it is still laid out
 // for a reader that went on regardless.
@@ -189,8 +200,72 @@ test('the formats that are built some other way', async (context) => {
       () => assert.equal(clockTextInside(contents), whenItWasShot));
   }
 
+  await context.test('a jpeg xl whose Exif box is short and the last thing in the file is read up to its end and no further',
+    () => assert.equal(clockTextInside(jpegXlStillWhoseShortExifBoxEndsTheFile('2026:08:27 10:12:00')), '2026-08-27 10:12:00'));
   await context.test('a png with nothing in it to go on is left undated rather than guessed at',
     () => assert.equal(clockTextInside(pngStillDatedOnlyInItsText('no date here at all')), null));
+});
+
+test('the segments a JPEG is walked through', async (context) => {
+  const shotAt = '2026:08:27 10:20:00';
+  const readFrom = (...segments) => clockTextInside(Buffer.concat([jpegMarker(JPEG_MARKER_START_OF_IMAGE), ...segments]));
+  const exifSegment = jpegSegment(JPEG_MARKER_APP1_EXIF, jpegExifBody(shotAt));
+
+  await context.test('an Exif segment behind an XMP one, which is also APP1, is still read', () => assert.equal(
+    readFrom(jpegSegment(JPEG_MARKER_APP1_EXIF, Buffer.from('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta/>', 'latin1')), exifSegment),
+    '2026-08-27 10:20:00',
+  ));
+  await context.test('Exif in a segment other than APP1 is not read',
+    () => assert.equal(readFrom(jpegSegment(JPEG_MARKER_APP0_JFIF, jpegExifBody(shotAt))), null));
+
+  const withoutItsMarkerPrefix = Buffer.from(exifSegment);
+  withoutItsMarkerPrefix[0] = 0;
+  await context.test('bytes that do not start with a marker end the walk, however much they look like a segment',
+    () => assert.equal(readFrom(withoutItsMarkerPrefix), null));
+  await context.test('nothing after the start of the scan is read', () => assert.equal(
+    readFrom(jpegSegment(JPEG_MARKER_START_OF_SCAN, Buffer.alloc(10)), exifSegment),
+    null,
+  ));
+  await context.test('nor after the end of the image, even bytes laid out as a segment would be', () => assert.equal(
+    readFrom(jpegMarker(JPEG_MARKER_END_OF_IMAGE), Buffer.from([0, 2]), exifSegment),
+    null,
+  ));
+
+  await context.test('an Exif segment that is the last one walked is still read', () => assert.equal(
+    clockTextInside(jpegFileBehindCommentSegments(shotAt, MOST_JPEG_SEGMENTS_WALKED - 2)),
+    '2026-08-27 10:20:00',
+  ));
+  await context.test('and one a segment further is not',
+    () => assert.equal(clockTextInside(jpegFileBehindCommentSegments(shotAt, MOST_JPEG_SEGMENTS_WALKED - 1)), null));
+});
+
+test('the chunks a PNG keeps its date in', async (context) => {
+  const readFrom = (chunks, layout) => clockTextInside(pngFileHolding(chunks, layout));
+
+  await context.test('a creation time in an international text chunk is read past the fields iTXt adds',
+    () => assert.equal(readFrom([pngTextChunk('Creation Time', '2026-08-27 10:00:00', { international: true })]), '2026-08-27 10:00:00'));
+  await context.test('a date in a text chunk under any other keyword is not taken for when it was shot',
+    () => assert.equal(readFrom([pngTextChunk('Comment', '2026-08-27 10:00:00')]), null));
+  await context.test('an Exif chunk holding no date leaves the creation time in the text to be read', () => assert.equal(
+    readFrom([pngExifChunk('not a date'), pngTextChunk('Creation Time', '2026-08-27 10:01:00')]),
+    '2026-08-27 10:01:00',
+  ));
+  await context.test('the creation time is kept over the moment the file was last written, whichever comes later', () => assert.equal(
+    readFrom([pngTextChunk('Creation Time', '2026-08-27 10:02:00'), pngLastWrittenChunk('2026-09-01 18:00:00')]),
+    '2026-08-27 10:02:00',
+  ));
+  await context.test('a chunk that is not tIME is never read as a time, though its bytes would pass for one',
+    () => assert.equal(readFrom([pngLastWrittenChunk('2026-08-27 10:03:00', 'pHYs')]), null));
+  await context.test('nothing after the image data is looked through',
+    () => assert.equal(readFrom([], { chunksAfterTheImage: [pngExifChunk('2026:08:27 10:04:00')] }), null));
+
+  const chunksBeforeIt = (howManyInAll) => pngPaddingChunks(howManyInAll - 1);
+  await context.test('an Exif chunk that is the last one walked is still read', () => assert.equal(
+    readFrom([...chunksBeforeIt(MOST_PNG_CHUNKS_WALKED - 1), pngExifChunk('2026:08:27 10:05:00')]),
+    '2026-08-27 10:05:00',
+  ));
+  await context.test('and one a chunk further is not',
+    () => assert.equal(readFrom([...chunksBeforeIt(MOST_PNG_CHUNKS_WALKED), pngExifChunk('2026:08:27 10:05:00')]), null));
 });
 
 test('the containers that hold their Exif somewhere else', async (context) => {
@@ -224,6 +299,12 @@ test('the raw formats that predate TIFF', async (context) => {
 
   await context.test('a Minolta MRW is read from the TIFF block it wraps',
     () => assert.equal(clockTextInside(minoltaRawFile('2026:08:27 09:07:01')), whenItWasShot));
+  await context.test('and so is one off a later Konica Minolta body, which marks the file differently',
+    () => assert.equal(clockTextInside(minoltaRawFile('2026:08:27 09:07:01', { mark: '\0MRI' })), whenItWasShot));
+  await context.test('an MRW block claiming no length is given up on rather than stepped over', () => assert.equal(
+    clockTextInside(minoltaRawFile('2026:08:27 09:07:01', { bytesInTheThumbnail: 0 })),
+    null,
+  ));
   await context.test('a Canon CRW is read from the capture time in its CIFF heap, nested directory and all',
     () => assert.equal(clockTextInside(canonCiffRawFile(whenItWasShot)), whenItWasShot));
   await context.test('a Sigma X3F is read from the TIME property in its property list',

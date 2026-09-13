@@ -33,12 +33,10 @@ const BITS_TO_THE_HIGH_NIBBLE = 4;
 
 export function readCameraClockFromExifPayload(byteSource, payloadStart, payloadLength) {
   const preamble = readTextAt(byteSource, payloadStart, Math.min(payloadLength, LONGEST_HEIF_EXIF_PREAMBLE_IN_BYTES));
-  const exifHeaderStart = preamble === null ? -1 : preamble.indexOf(EXIF_HEADER);
-  if (exifHeaderStart >= 0) {
-    return readCameraClockFromTiff(byteSource, payloadStart + exifHeaderStart + EXIF_HEADER.length);
+  if (preamble !== null && preamble.includes(EXIF_HEADER)) {
+    return readCameraClockFromTiff(byteSource, payloadStart + preamble.indexOf(EXIF_HEADER) + EXIF_HEADER.length);
   }
   const tiffHeaderOffset = readUInt32At(byteSource, payloadStart, false);
-  if (tiffHeaderOffset === null) return null;
   return readCameraClockFromTiff(byteSource, payloadStart + BYTES_IN_A_SHORT_FIELD + tiffHeaderOffset);
 }
 
@@ -49,14 +47,14 @@ function findTheExifItemsId(byteSource, metadataContents) {
   if (itemInformation === null) return null;
 
   const version = versionOfBoxAt(byteSource, itemInformation);
-  if (version === null) return null;
   const countIsLong = version > 0;
   const entriesStart = itemInformation.contentStart + BYTES_IN_A_BOX_THAT_STARTS_WITH_A_VERSION_AND_FLAGS
     + (countIsLong ? BYTES_IN_A_LONG_ITEM_ID : BYTES_IN_A_SHORT_ITEM_ID);
 
   const idOfEntry = (entry) => {
     const entryVersion = versionOfBoxAt(byteSource, entry);
-    if (entryVersion === null || entryVersion < ITEM_ENTRY_EARLIEST_VERSION_NAMING_A_TYPE) return null;
+    const theEntryNamesItsType = entryVersion >= ITEM_ENTRY_EARLIEST_VERSION_NAMING_A_TYPE;
+    if (!theEntryNamesItsType) return null;
     const idIsLong = entryVersion >= ITEM_ENTRY_VERSION_NAMING_THE_TYPE_AS_A_LONG_ID;
     const idStart = entry.contentStart + BYTES_IN_A_BOX_THAT_STARTS_WITH_A_VERSION_AND_FLAGS;
     const typeStart = idStart + (idIsLong ? BYTES_IN_A_LONG_ITEM_ID : BYTES_IN_A_SHORT_ITEM_ID)
@@ -82,7 +80,6 @@ function findWhereTheItemIsStored(byteSource, metadataContents, wantedItemId) {
   );
   if (itemLocation === null) return null;
   const version = versionOfBoxAt(byteSource, itemLocation);
-  if (version === null) return null;
 
   let position = itemLocation.contentStart + BYTES_IN_A_BOX_THAT_STARTS_WITH_A_VERSION_AND_FLAGS;
   const widths = readBytesAt(byteSource, position, 2);
@@ -99,12 +96,11 @@ function findWhereTheItemIsStored(byteSource, metadataContents, wantedItemId) {
   const readId = (at) => (idIsLong ? readUInt32At(byteSource, at, false) : readUInt16At(byteSource, at, false));
 
   const itemCount = readId(position);
-  if (itemCount === null || itemCount > MOST_ITEMS_A_REAL_STILL_HAS) return null;
+  if (itemCount > MOST_ITEMS_A_REAL_STILL_HAS) return null;
   position += bytesInAnId;
 
   for (let item = 0; item < itemCount; item++) {
     const itemId = readId(position);
-    if (itemId === null) return null;
     position += bytesInAnId;
 
     let constructionMethod = ITEM_STORED_AT_A_PLAIN_FILE_OFFSET;
@@ -119,7 +115,6 @@ function findWhereTheItemIsStored(byteSource, metadataContents, wantedItemId) {
     position += baseOffsetSize;
 
     const extentCount = readUInt16At(byteSource, position, false);
-    if (extentCount === null) return null;
     position += BYTES_IN_AN_EXTENT_COUNT;
 
     for (let extent = 0; extent < extentCount; extent++) {
@@ -130,9 +125,7 @@ function findWhereTheItemIsStored(byteSource, metadataContents, wantedItemId) {
       position += lengthSize;
       if (extentOffset === null || extentLength === null) return null;
 
-      const thisIsTheItemWanted = itemId === wantedItemId
-        && constructionMethod === ITEM_STORED_AT_A_PLAIN_FILE_OFFSET
-        && extent === 0;
+      const thisIsTheItemWanted = itemId === wantedItemId && constructionMethod === ITEM_STORED_AT_A_PLAIN_FILE_OFFSET;
       if (thisIsTheItemWanted) return { start: baseOffset + extentOffset, length: extentLength };
     }
   }
@@ -144,9 +137,7 @@ export function readCameraClockFromHeifStill(byteSource) {
   if (metadataBox === null) return null;
   const metadataContents = insideAMetadataBox(byteSource, metadataBox);
 
-  const exifItemId = findTheExifItemsId(byteSource, metadataContents);
-  if (exifItemId === null) return null;
-  const whereItIsStored = findWhereTheItemIsStored(byteSource, metadataContents, exifItemId);
+  const whereItIsStored = findWhereTheItemIsStored(byteSource, metadataContents, findTheExifItemsId(byteSource, metadataContents));
   if (whereItIsStored === null) return null;
   return readCameraClockFromExifPayload(byteSource, whereItIsStored.start, whereItIsStored.length);
 }

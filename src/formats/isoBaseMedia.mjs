@@ -24,18 +24,17 @@ export function findIsoBoxWhere(byteSource, searchStart, searchEnd, isTheOneWant
   while (boxStart + ISO_BOX_HEADER_BYTES <= searchEnd) {
     const declaredSize = readUInt32At(byteSource, boxStart, false);
     const boxType = readTextAt(byteSource, boxStart + ISO_BOX_SIZE_FIELD_BYTES, ISO_BOX_TYPE_FIELD_BYTES);
-    if (declaredSize === null || boxType === null) return null;
 
     let headerSize = ISO_BOX_HEADER_BYTES;
     let boxSize = declaredSize;
     if (declaredSize === ISO_BOX_SIZE_MEANING_A_64_BIT_SIZE_FOLLOWS) {
       boxSize = readUInt64At(byteSource, boxStart + ISO_BOX_HEADER_BYTES);
       headerSize = ISO_BOX_HEADER_WITH_64_BIT_SIZE_BYTES;
-      if (boxSize === null) return null;
     } else if (declaredSize === ISO_BOX_SIZE_MEANING_THIS_BOX_RUNS_TO_THE_END) {
-      boxSize = searchEnd - boxStart;
+      boxSize = Infinity;
     }
-    if (boxSize < headerSize) return null;
+    const aSizeWasThereAndHoldsTheHeader = boxSize >= headerSize;
+    if (!aSizeWasThereAndHoldsTheHeader) return null;
 
     const box = { contentStart: boxStart + headerSize, contentEnd: Math.min(boxStart + boxSize, searchEnd) };
     if (isTheOneWanted(boxType, box)) return box;
@@ -79,6 +78,5 @@ export function insideAMetadataBox(byteSource, box) {
 
 export const readTextInside = (byteSource, box, skippingBytes, longestWorthReading) => {
   const textStart = box.contentStart + skippingBytes;
-  const byteCount = Math.min(box.contentEnd - textStart, longestWorthReading);
-  return byteCount <= 0 ? null : readTextAt(byteSource, textStart, byteCount);
+  return readTextAt(byteSource, textStart, Math.max(0, Math.min(box.contentEnd - textStart, longestWorthReading)));
 };

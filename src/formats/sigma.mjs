@@ -30,7 +30,7 @@ function readCaptureTimeFromSigmaProperties(byteSource, sectionStart) {
   if (readTextAt(byteSource, sectionStart, BYTES_IN_A_SIGMA_MARK) !== SIGMA_PROPERTY_SECTION_MARK) return null;
 
   const propertyCount = readUInt32At(byteSource, sectionStart + BYTES_FROM_A_SECTION_START_TO_ITS_COUNT, true);
-  if (propertyCount === null || propertyCount === 0 || propertyCount > MOST_PROPERTIES_A_REAL_SIGMA_RAW_HAS) return null;
+  if (propertyCount > MOST_PROPERTIES_A_REAL_SIGMA_RAW_HAS) return null;
 
   const tableStart = sectionStart + BYTES_IN_A_SIGMA_PROPERTY_SECTION_HEADER;
   const textStart = tableStart + propertyCount * BYTES_PER_SIGMA_PROPERTY_ENTRY;
@@ -39,7 +39,6 @@ function readCaptureTimeFromSigmaProperties(byteSource, sectionStart) {
     const entryStart = tableStart + propertyIndex * BYTES_PER_SIGMA_PROPERTY_ENTRY;
     const nameOffset = readUInt32At(byteSource, entryStart, true);
     const valueOffset = readUInt32At(byteSource, entryStart + 4, true);
-    if (nameOffset === null || valueOffset === null) return null;
 
     const name = readTwoByteWideTextAt(
       byteSource, textStart + nameOffset * BYTES_PER_SIGMA_CHARACTER, LONGEST_SIGMA_PROPERTY_IN_BYTES,
@@ -49,9 +48,7 @@ function readCaptureTimeFromSigmaProperties(byteSource, sectionStart) {
     const value = readTwoByteWideTextAt(
       byteSource, textStart + valueOffset * BYTES_PER_SIGMA_CHARACTER, LONGEST_SIGMA_PROPERTY_IN_BYTES,
     );
-    const secondsSince1970 = Number(value);
-    if (!Number.isFinite(secondsSince1970) || secondsSince1970 <= 0) return null;
-    return onlyIfPlausible(cameraClockFromSecondsSince1970(secondsSince1970));
+    return onlyIfPlausible(cameraClockFromSecondsSince1970(Number(value)));
   }
   return null;
 }
@@ -59,11 +56,10 @@ function readCaptureTimeFromSigmaProperties(byteSource, sectionStart) {
 export function readCameraClockFromSigmaRaw(byteSource) {
   if (!startsWithASigmaRawMark(byteSource)) return null;
   const directoryStart = readUInt32At(byteSource, byteSource.sizeInBytes - BYTES_IN_A_SIGMA_DIRECTORY_POINTER, true);
-  if (directoryStart === null || directoryStart <= 0 || directoryStart >= byteSource.sizeInBytes) return null;
   if (readTextAt(byteSource, directoryStart, BYTES_IN_A_SIGMA_MARK) !== SIGMA_DIRECTORY_MARK) return null;
 
   const sectionCount = readUInt32At(byteSource, directoryStart + BYTES_FROM_A_SECTION_START_TO_ITS_COUNT, true);
-  if (sectionCount === null || sectionCount === 0 || sectionCount > MOST_SECTIONS_A_REAL_SIGMA_RAW_HAS) return null;
+  if (sectionCount > MOST_SECTIONS_A_REAL_SIGMA_RAW_HAS) return null;
 
   for (let sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
     const entryStart = directoryStart + BYTES_IN_A_SIGMA_DIRECTORY_HEADER
@@ -72,8 +68,7 @@ export function readCameraClockFromSigmaRaw(byteSource) {
     const sectionType = readTextAt(
       byteSource, entryStart + BYTES_FROM_SIGMA_DIRECTORY_ENTRY_START_TO_ITS_TYPE, BYTES_IN_A_SIGMA_MARK,
     );
-    if (sectionStart === null || sectionType === null) return null;
-    if (sectionType !== SIGMA_PROPERTY_SECTION_TYPE || sectionStart >= byteSource.sizeInBytes) continue;
+    if (sectionType !== SIGMA_PROPERTY_SECTION_TYPE) continue;
 
     const captured = readCaptureTimeFromSigmaProperties(byteSource, sectionStart);
     if (captured !== null) return captured;

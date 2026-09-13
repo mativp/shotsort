@@ -51,35 +51,25 @@ export const startsWithACanonCiffMark = (byteSource) =>
 function findCaptureTimeInCiffHeap(byteSource, heapStart, heapEnd, isLittleEndian, howDeep) {
   if (howDeep > DEEPEST_A_REAL_CIFF_DIRECTORY_NESTS) return null;
   const directoryPointerAt = heapEnd - BYTES_IN_A_CIFF_DIRECTORY_POINTER;
-  if (directoryPointerAt < heapStart) return null;
-
-  const directoryOffset = readUInt32At(byteSource, directoryPointerAt, isLittleEndian);
-  if (directoryOffset === null) return null;
-  const directoryStart = heapStart + directoryOffset;
-  if (directoryStart < heapStart || directoryStart + BYTES_IN_A_CIFF_ENTRY_COUNT_FIELD > heapEnd) return null;
-
+  const directoryStart = heapStart + readUInt32At(byteSource, directoryPointerAt, isLittleEndian);
   const entryCount = readUInt16At(byteSource, directoryStart, isLittleEndian);
-  if (entryCount === null || entryCount === 0 || entryCount > MOST_ENTRIES_A_REAL_CIFF_DIRECTORY_HAS) return null;
+  const entriesStart = directoryStart + BYTES_IN_A_CIFF_ENTRY_COUNT_FIELD;
+  const theEntriesFitBeforeThePointer = entriesStart + entryCount * BYTES_PER_CIFF_DIRECTORY_ENTRY <= directoryPointerAt;
+  if (!theEntriesFitBeforeThePointer || entryCount > MOST_ENTRIES_A_REAL_CIFF_DIRECTORY_HAS) return null;
 
   for (let entryIndex = 0; entryIndex < entryCount; entryIndex++) {
-    const entryStart = directoryStart + BYTES_IN_A_CIFF_ENTRY_COUNT_FIELD
-      + entryIndex * BYTES_PER_CIFF_DIRECTORY_ENTRY;
+    const entryStart = entriesStart + entryIndex * BYTES_PER_CIFF_DIRECTORY_ENTRY;
     const tag = readUInt16At(byteSource, entryStart, isLittleEndian);
     const valueLength = readUInt32At(byteSource, entryStart + 2, isLittleEndian);
-    const valueOffset = readUInt32At(byteSource, entryStart + 6, isLittleEndian);
-    if (tag === null || valueLength === null || valueOffset === null) return null;
-
-    const valueStart = heapStart + valueOffset;
+    const valueStart = heapStart + readUInt32At(byteSource, entryStart + 6, isLittleEndian);
     const valueEnd = valueStart + valueLength;
-    if (valueStart < heapStart || valueEnd > heapEnd) continue;
+    if (valueEnd > heapEnd) continue;
 
     if ((tag & CIFF_DATA_TYPE_MASK) === CIFF_DATA_TYPE_SUBDIRECTORY) {
       const found = findCaptureTimeInCiffHeap(byteSource, valueStart, valueEnd, isLittleEndian, howDeep + 1);
       if (found !== null) return found;
     } else if (tag === CIFF_TAG_CAPTURE_TIME) {
-      const secondsSince1970 = readUInt32At(byteSource, valueStart, isLittleEndian);
-      if (secondsSince1970 === null || secondsSince1970 === 0) continue;
-      const clock = onlyIfPlausible(cameraClockFromSecondsSince1970(secondsSince1970));
+      const clock = onlyIfPlausible(cameraClockFromSecondsSince1970(readUInt32At(byteSource, valueStart, isLittleEndian)));
       if (clock !== null) return clock;
     }
   }
@@ -92,6 +82,5 @@ export function readCameraClockFromCanonCiffRaw(byteSource) {
   if (byteOrder === null) return null;
 
   const heapStart = readUInt32At(byteSource, BYTES_FROM_FILE_START_TO_THE_CIFF_HEAP, byteOrder.isLittleEndian);
-  if (heapStart === null || heapStart <= 0 || heapStart >= byteSource.sizeInBytes) return null;
   return findCaptureTimeInCiffHeap(byteSource, heapStart, byteSource.sizeInBytes, byteOrder.isLittleEndian, 0);
 }

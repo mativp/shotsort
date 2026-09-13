@@ -6,45 +6,79 @@ const ITEM_LOCATION_VERSION_WITH_LONG_COUNTS = 2;
 const ITEM_ENTRY_VERSION_NAMING_THE_TYPE_AS_A_LONG_ID = 3;
 const EXIF_ITEM_ID = 1;
 const HEIF_EXIF_PAYLOAD_SKIPPING_THE_MARKER = 6;
-const OFFSET_AND_LENGTH_BOTH_FOUR_BYTES_WIDE = 0x44;
+
+// The payload opens with how many bytes to skip to reach the TIFF header, which either
+// spells out the Exif marker or is simply whatever comes before the TIFF.
+export function heifExifPayload(dateTimeOriginal, {
+  spellsOutTheExifMarker = true, bytesBeforeTheTiff = 0, bytesItSaysToSkip = HEIF_EXIF_PAYLOAD_SKIPPING_THE_MARKER,
+} = {}) {
+  const tiff = tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal });
+  return spellsOutTheExifMarker
+    ? Buffer.concat([bigEndianUInt32(bytesItSaysToSkip), Buffer.from(EXIF_HEADER, 'latin1'), tiff])
+    : Buffer.concat([bigEndianUInt32(bytesBeforeTheTiff), Buffer.alloc(bytesBeforeTheTiff), tiff]);
+}
+
+export const heifItemInformationEntry = ({ id = EXIF_ITEM_ID, version = 2, type = 'Exif', boxType = 'infe' } = {}) =>
+  isoFullBox(boxType, version, Buffer.concat([
+    version >= ITEM_ENTRY_VERSION_NAMING_THE_TYPE_AS_A_LONG_ID ? bigEndianUInt32(id) : bigEndianUInt16(id),
+    bigEndianUInt16(0), Buffer.from(`${type}\0`, 'latin1'),
+  ]));
+
+export const heifItemInformationBox = (entries, { version = 0 } = {}) => isoFullBox('iinf', version, Buffer.concat([
+  version > 0 ? bigEndianUInt32(entries.length) : bigEndianUInt16(entries.length), ...entries,
+]));
+
+function unsignedOfWidth(value, byteCount) {
+  const bytes = Buffer.alloc(byteCount);
+  if (byteCount === 8) bytes.writeBigUInt64BE(BigInt(value));
+  else if (byteCount > 0) bytes.writeUIntBE(value, 0, byteCount);
+  return bytes;
+}
+
+// Each item is an id, a construction method (from version one on), a base offset and its
+// extents, every field as wide as the box's header says.
+export function heifItemLocationBox(items, {
+  version = 1, offsetSize = 4, lengthSize = 4, baseOffsetSize = 0, indexSize = 0, declaredItemCount = items.length,
+} = {}) {
+  const countsAreLong = version >= ITEM_LOCATION_VERSION_WITH_LONG_COUNTS;
+  const asLongAsTheVersionNeeds = (value) => (countsAreLong ? bigEndianUInt32(value) : bigEndianUInt16(value));
+  const itemBytes = items.map(({ id = EXIF_ITEM_ID, constructionMethod = 0, baseOffset = 0, extents }) => Buffer.concat([
+    asLongAsTheVersionNeeds(id),
+    ...(version >= 1 ? [bigEndianUInt16(constructionMethod)] : []),
+    bigEndianUInt16(0),
+    unsignedOfWidth(baseOffset, baseOffsetSize),
+    bigEndianUInt16(extents.length),
+    ...extents.flatMap(({ index = 0, offset, length }) => [
+      unsignedOfWidth(index, indexSize), unsignedOfWidth(offset, offsetSize), unsignedOfWidth(length, lengthSize),
+    ]),
+  ]));
+  return isoFullBox('iloc', version, Buffer.concat([
+    Buffer.from([(offsetSize << 4) | lengthSize, (baseOffsetSize << 4) | indexSize]),
+    asLongAsTheVersionNeeds(declaredItemCount), ...itemBytes,
+  ]));
+}
+
+// Where the payload lands depends on how long the boxes before it are, so the boxes are
+// built once to measure and again knowing where the payload starts.
+export function heifStillHolding(boxesKnowingWhereThePayloadStarts, payload) {
+  const buildWithThePayloadAt = (payloadStart) => {
+    const { itemInformation, itemLocation } = boxesKnowingWhereThePayloadStarts(payloadStart);
+    return Buffer.concat([
+      isoBox('ftyp', Buffer.from('heicmif1miafheic', 'latin1')),
+      isoFullBox('meta', 0, Buffer.concat([isoBox('hdlr', Buffer.alloc(24)), itemInformation, itemLocation])),
+      isoBox('mdat', payload),
+    ]);
+  };
+  const measured = buildWithThePayloadAt(0);
+  return buildWithThePayloadAt(measured.length - payload.length);
+}
 
 export function heifStill(dateTimeOriginal, {
   itemLocationVersion = 1, itemEntryVersion = 2, spellsOutTheExifMarker = true,
 } = {}) {
-  const exifPayload = spellsOutTheExifMarker
-    ? Buffer.concat([
-      bigEndianUInt32(HEIF_EXIF_PAYLOAD_SKIPPING_THE_MARKER), Buffer.from(EXIF_HEADER, 'latin1'),
-      tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal }),
-    ])
-    : Buffer.concat([bigEndianUInt32(0), tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal })]);
-
-  const idIsLong = itemEntryVersion >= ITEM_ENTRY_VERSION_NAMING_THE_TYPE_AS_A_LONG_ID;
-  const itemInformationEntry = isoFullBox('infe', itemEntryVersion, Buffer.concat([
-    idIsLong ? bigEndianUInt32(EXIF_ITEM_ID) : bigEndianUInt16(EXIF_ITEM_ID),
-    bigEndianUInt16(0), Buffer.from('Exif\0', 'latin1'),
-  ]));
-  const itemInformation = isoFullBox('iinf', 0, Buffer.concat([bigEndianUInt16(1), itemInformationEntry]));
-
-  const countsAreLong = itemLocationVersion >= ITEM_LOCATION_VERSION_WITH_LONG_COUNTS;
-  const asLongAsTheVersionNeeds = (value) => (countsAreLong ? bigEndianUInt32(value) : bigEndianUInt16(value));
-
-  const buildWithTheExifItemAt = (payloadStart) => {
-    const carriesAConstructionMethod = itemLocationVersion >= 1;
-    const item = Buffer.concat([
-      asLongAsTheVersionNeeds(EXIF_ITEM_ID),
-      ...(carriesAConstructionMethod ? [bigEndianUInt16(0)] : []),
-      bigEndianUInt16(0), bigEndianUInt16(1),
-      bigEndianUInt32(payloadStart), bigEndianUInt32(exifPayload.length),
-    ]);
-    const itemLocation = isoFullBox('iloc', itemLocationVersion, Buffer.concat([
-      Buffer.from([OFFSET_AND_LENGTH_BOTH_FOUR_BYTES_WIDE, 0x00]), asLongAsTheVersionNeeds(1), item,
-    ]));
-    return Buffer.concat([
-      isoBox('ftyp', Buffer.from('heicmif1miafheic', 'latin1')),
-      isoFullBox('meta', 0, Buffer.concat([isoBox('hdlr', Buffer.alloc(24)), itemInformation, itemLocation])),
-      isoBox('mdat', exifPayload),
-    ]);
-  };
-  const measured = buildWithTheExifItemAt(0);
-  return buildWithTheExifItemAt(measured.length - exifPayload.length);
+  const payload = heifExifPayload(dateTimeOriginal, { spellsOutTheExifMarker });
+  return heifStillHolding((payloadStart) => ({
+    itemInformation: heifItemInformationBox([heifItemInformationEntry({ version: itemEntryVersion })]),
+    itemLocation: heifItemLocationBox([{ extents: [{ offset: payloadStart, length: payload.length }] }], { version: itemLocationVersion }),
+  }), payload);
 }

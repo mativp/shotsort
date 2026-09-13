@@ -39,16 +39,13 @@ function eachChunkIn(byteSource, searchStart, searchEnd, visit) {
     if (chunkStart + BYTES_IN_A_RIFF_CHUNK_HEADER > searchEnd) return null;
     const chunkType = readTextAt(byteSource, chunkStart, BYTES_IN_A_RIFF_CHUNK_TYPE);
     const chunkLength = readUInt32At(byteSource, chunkStart + BYTES_IN_A_RIFF_CHUNK_TYPE, true);
-    if (chunkType === null || chunkLength === null) return null;
 
     const contentStart = chunkStart + BYTES_IN_A_RIFF_CHUNK_HEADER;
     const contentEnd = Math.min(contentStart + chunkLength, searchEnd);
     const found = visit(chunkType, contentStart, contentEnd);
     if (found !== null) return found;
 
-    const nextChunkStart = afterChunk(chunkStart, chunkLength);
-    if (nextChunkStart <= chunkStart) return null;
-    chunkStart = nextChunkStart;
+    chunkStart = afterChunk(chunkStart, chunkLength);
   }
   return null;
 }
@@ -62,8 +59,8 @@ const dateWrittenInChunk = (byteSource, contentStart, contentEnd) => onlyIfPlaus
 // An Exif chunk may hold the Exif header a JPEG segment would carry, or start straight at
 // the TIFF byte order mark; WebP writes it one way and the compacts that put Exif in an
 // AVI write it the other.
-function readExifChunk(byteSource, contentStart, contentEnd) {
-  const preamble = readTextAt(byteSource, contentStart, Math.min(contentEnd - contentStart, EXIF_HEADER.length));
+function readExifChunk(byteSource, contentStart) {
+  const preamble = readTextAt(byteSource, contentStart, EXIF_HEADER.length);
   const tiffStart = preamble === EXIF_HEADER ? contentStart + EXIF_HEADER.length : contentStart;
   return readCameraClockFromTiff(byteSource, tiffStart);
 }
@@ -76,7 +73,7 @@ function findDateIn(byteSource, searchStart, searchEnd, wantedTypes, howDeep) {
     }
     if (!wantedTypes.includes(chunkType)) return null;
     return EXIF_CHUNK_TYPES.includes(chunkType)
-      ? readExifChunk(byteSource, contentStart, contentEnd)
+      ? readExifChunk(byteSource, contentStart)
       : dateWrittenInChunk(byteSource, contentStart, contentEnd);
   });
 }

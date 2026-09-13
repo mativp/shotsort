@@ -50,7 +50,6 @@ export const startsWithARedcodeMark = (byteSource) => redcodeVersionIn(byteSourc
 function lookForTheDirectory(byteSource, searchStart) {
   const window = readBytesAt(byteSource, searchStart, BYTES_WORTH_SEARCHING_FOR_THE_DIRECTORY)
     ?? readBytesAt(byteSource, searchStart, Math.max(byteSource.sizeInBytes - searchStart, 0));
-  if (window === null) return null;
 
   const firstRecordHeader = Buffer.alloc(BYTES_IN_A_RECORD_HEADER);
   firstRecordHeader.writeUInt16BE(0x000f, 0);
@@ -79,12 +78,13 @@ function whenItWasShotInDirectory(byteSource, directoryStart, directoryEnd) {
     if (recordStart + BYTES_IN_A_RECORD_HEADER > directoryEnd) return null;
     const recordLength = readUInt16At(byteSource, recordStart, false);
     const recordNumber = readUInt16At(byteSource, recordStart + 2, false);
-    if (recordLength === null || recordNumber === null || recordLength < BYTES_IN_A_RECORD_HEADER) return null;
+    const aRecordWasThereHoldingItsHeader = recordLength >= BYTES_IN_A_RECORD_HEADER;
+    if (!aRecordWasThereHoldingItsHeader) return null;
 
     if (recordNumber === RECORD_HOLDING_WHEN_IT_WAS_SHOT) {
       const digits = readTextAt(byteSource, recordStart + BYTES_IN_A_RECORD_HEADER,
         Math.min(recordLength - BYTES_IN_A_RECORD_HEADER, LONGEST_DATE_RECORD_IN_BYTES));
-      const parts = digits === null ? null : WHEN_IT_WAS_SHOT_PATTERN.exec(digits);
+      const parts = WHEN_IT_WAS_SHOT_PATTERN.exec(digits);
       if (parts !== null) {
         return onlyIfPlausible(cameraClockFrom(
           Number(parts[1]), Number(parts[2]), Number(parts[3]),
@@ -102,12 +102,11 @@ export function readCameraClockFromRedcode(byteSource) {
   if (version === null) return null;
 
   const blockSize = readUInt32At(byteSource, 0, false);
-  if (blockSize === null || blockSize < SHORTEST_REDCODE_BLOCK) return null;
+  if (blockSize < SHORTEST_REDCODE_BLOCK) return null;
 
   const { start, secondBlockStart } = whereTheDirectoryBegins(byteSource, 0, blockSize, version);
   const declaredLength = readUInt16At(byteSource, start, false);
-  const theArithmeticHeld = declaredLength !== null
-    && declaredLength >= SHORTEST_DIRECTORY_WORTH_TRUSTING
+  const theArithmeticHeld = declaredLength >= SHORTEST_DIRECTORY_WORTH_TRUSTING
     && declaredLength < LONGEST_DIRECTORY_WORTH_TRUSTING
     && start + 2 + declaredLength <= byteSource.sizeInBytes;
 
@@ -116,6 +115,5 @@ export function readCameraClockFromRedcode(byteSource) {
     if (found !== null) return found;
   }
 
-  const searchedOut = lookForTheDirectory(byteSource, secondBlockStart);
-  return searchedOut === null ? null : whenItWasShotInDirectory(byteSource, searchedOut, byteSource.sizeInBytes);
+  return whenItWasShotInDirectory(byteSource, lookForTheDirectory(byteSource, secondBlockStart), byteSource.sizeInBytes);
 }

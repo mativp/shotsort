@@ -57,13 +57,14 @@ function readCreationDateWrittenByApple(byteSource, movieBox) {
 
   let position = keysBox.contentStart + BYTES_IN_A_BOX_THAT_STARTS_WITH_A_VERSION_AND_FLAGS;
   const keyCount = readUInt32At(byteSource, position, false);
-  if (keyCount === null || keyCount > MOST_METADATA_KEYS_A_REAL_MOVIE_HAS) return null;
+  if (keyCount > MOST_METADATA_KEYS_A_REAL_MOVIE_HAS) return null;
   position += BYTES_IN_A_SHORT_FIELD;
 
   let indexOfTheCreationDate = null;
   for (let key = 1; key <= keyCount && indexOfTheCreationDate === null; key++) {
     const keySize = readUInt32At(byteSource, position, false);
-    if (keySize === null || keySize < BYTES_IN_A_METADATA_KEY_HEADER) return null;
+    const aKeyWasThereHoldingItsHeader = keySize >= BYTES_IN_A_METADATA_KEY_HEADER;
+    if (!aKeyWasThereHoldingItsHeader) return null;
     const keyName = readTextAt(
       byteSource, position + BYTES_IN_A_METADATA_KEY_HEADER, keySize - BYTES_IN_A_METADATA_KEY_HEADER,
     );
@@ -101,7 +102,5 @@ export function readCameraClockFromMovie(byteSource) {
   const secondsSince1904 = version === MOVIE_HEADER_VERSION_WITH_64_BIT_TIMES
     ? readUInt64At(byteSource, creationTimeStart)
     : readUInt32At(byteSource, creationTimeStart, false);
-  if (secondsSince1904 === null || secondsSince1904 === 0) return null;
-
   return onlyIfPlausible(cameraClockFromSecondsSince1904(secondsSince1904));
 }

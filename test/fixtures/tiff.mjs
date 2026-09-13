@@ -130,7 +130,7 @@ export function tiffFileWithTheDateInItsMainDirectory(dateTag, dateTimeOriginal)
 // its pointer in the first four bytes of an eight-byte value field. Both are built here
 // because a reader that assumes the wide one reads a big-endian file off the end of its
 // own pointer.
-export function bigTiffFile(dateTimeOriginal, { bigEndian = false, pointerType = TIFF_VALUE_TYPE_LONG8 } = {}) {
+export function bigTiffFile(dateTimeOriginal, { bigEndian = false, pointerType = TIFF_VALUE_TYPE_LONG8, offsetSize = BYTES_IN_A_BIG_TIFF_OFFSET } = {}) {
   const uInt16 = (value) => {
     const bytes = Buffer.alloc(2);
     if (bigEndian) bytes.writeUInt16BE(value); else bytes.writeUInt16LE(value);
@@ -154,7 +154,7 @@ export function bigTiffFile(dateTimeOriginal, { bigEndian = false, pointerType =
 
   const header = Buffer.concat([
     Buffer.from(bigEndian ? TIFF_BIG_ENDIAN_MARK : TIFF_LITTLE_ENDIAN_MARK, 'latin1'),
-    uInt16(BIG_TIFF_SIGNATURE), uInt16(BYTES_IN_A_BIG_TIFF_OFFSET), uInt16(0),
+    uInt16(BIG_TIFF_SIGNATURE), uInt16(offsetSize), uInt16(0),
     uInt64(BYTES_IN_A_BIG_TIFF_HEADER),
   ]);
   const exifDirectoryOffset = BYTES_IN_A_BIG_TIFF_HEADER + BYTES_IN_A_BIG_TIFF_DIRECTORY_HOLDING_ONE_ENTRY;
@@ -167,4 +167,54 @@ export function bigTiffFile(dateTimeOriginal, { bigEndian = false, pointerType =
     directoryHolding([entry(TIFF_TAG_DATE_TIME_ORIGINAL, TIFF_VALUE_TYPE_ASCII, dateValue.length, dateValueOffset)]),
     dateValue,
   ]);
+}
+
+export const tiffAsciiEntry = (tag, text) =>
+  ({ tag, valueType: TIFF_VALUE_TYPE_ASCII, valueCount: text.length + 1, data: Buffer.from(`${text}\0`, 'latin1') });
+export const tiffLongEntry = (tag, number) => {
+  const data = Buffer.alloc(4);
+  data.writeUInt32LE(number);
+  return { tag, valueType: TIFF_VALUE_TYPE_LONG, valueCount: 1, data };
+};
+export const tiffEntryHolding = (tag, valueType, data, valueCount = data.length) => ({ tag, valueType, valueCount, data });
+export const TIFF_EXIF_POINTER = { pointsAtTheExifDirectory: true };
+
+// A little-endian TIFF laid out as its main directory, its Exif directory if it has one, and
+// then every value too long to sit inside its entry, each entry pointing at its own.
+export function tiffFileLaidOut({
+  mainEntries, exifEntries = null, signature = TIFF_STANDARD_SIGNATURE,
+  declaredMainEntryCount = mainEntries.length, declaredExifEntryCount = exifEntries?.length,
+}) {
+  const directorySize = (entries) => BYTES_IN_TIFF_ENTRY_COUNT_FIELD + entries.length * BYTES_PER_TIFF_DIRECTORY_ENTRY
+    + BYTES_IN_NEXT_DIRECTORY_POINTER;
+  const exifDirectoryOffset = BYTES_IN_TIFF_HEADER + directorySize(mainEntries);
+  let dataOffset = exifDirectoryOffset + (exifEntries === null ? 0 : directorySize(exifEntries));
+  const data = [];
+
+  const directoryOf = (entries, declaredCount) => {
+    const count = Buffer.alloc(BYTES_IN_TIFF_ENTRY_COUNT_FIELD);
+    count.writeUInt16LE(declaredCount, 0);
+    const entryBytes = entries.map((entry) => {
+      const spec = entry.pointsAtTheExifDirectory
+        ? tiffLongEntry(TIFF_TAG_EXIF_DIRECTORY_POINTER, exifDirectoryOffset)
+        : entry;
+      const bytes = Buffer.alloc(BYTES_PER_TIFF_DIRECTORY_ENTRY);
+      bytes.writeUInt16LE(spec.tag, 0);
+      bytes.writeUInt16LE(spec.valueType, 2);
+      bytes.writeUInt32LE(spec.valueCount, 4);
+      if (spec.data.length <= 4) {
+        spec.data.copy(bytes, 8);
+      } else {
+        bytes.writeUInt32LE(dataOffset, 8);
+        data.push(spec.data);
+        dataOffset += spec.data.length;
+      }
+      return bytes;
+    });
+    return Buffer.concat([count, ...entryBytes, Buffer.alloc(BYTES_IN_NEXT_DIRECTORY_POINTER)]);
+  };
+
+  const mainDirectory = directoryOf(mainEntries, declaredMainEntryCount);
+  const exifDirectory = exifEntries === null ? Buffer.alloc(0) : directoryOf(exifEntries, declaredExifEntryCount);
+  return Buffer.concat([tiffHeaderPointingAtFirstDirectory(signature, BYTES_IN_TIFF_HEADER), mainDirectory, exifDirectory, ...data]);
 }
