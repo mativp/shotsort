@@ -193,8 +193,22 @@ sometimes worthless and how `shotsort` tells the difference.
 | Option | What it does |
 |---|---|
 | `-v`, `--verbose` | Print every file as it is placed, as `source -> destination`. Files already in the right place are not printed. Nothing is being placed under `-n`, so the two together print no more than `-n` alone; `-n --json` is the per-file preview. |
-| `-q`, `--quiet` | Print nothing but errors. |
-| `--json` | Print the plan and the result as JSON on standard output: every file with the folder chosen for it, the clock the date came from, and what was done, and a summary carrying everything the notes on standard error would have said. With `-n` this is the whole plan, file by file, before anything is written. |
+| `-q`, `--quiet` | Print nothing but errors, and no progress line. |
+| `--json` | Print the plan and the result as JSON on standard output: every file with the folder chosen for it, the clock the date came from, and what was done, and a summary carrying everything the notes on standard error would have said. With `-n` this is the whole plan, file by file, before anything is written. No progress line is drawn beside it. |
+
+While files are copied or moved, a line on standard error shows how far the run
+has got: the share of the bytes written, the files and bytes so far, the time
+left once a few seconds have given it a rate to go by, and the file being
+written.
+
+```console
+copying  37%  [###########...................]  1204 of 3261 files  23.1 GB of 62.4 GB  about 9 min left  P1071204.RW2
+```
+
+It is drawn only when standard error is a terminal, and taken down before the
+summary is printed, so a pipe, a log file or a script reading the output never
+sees it. On a narrow terminal the file name gives way first, then the time
+left, then the sizes.
 
 ### Help
 

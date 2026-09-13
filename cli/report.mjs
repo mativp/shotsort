@@ -11,7 +11,7 @@ const BYTES_PER_UNIT_STEP = 1024;
 const FILE_COUNT_COLUMN_WIDTH = 5;
 const BYTE_SIZE_COLUMN_WIDTH = 10;
 
-function formatByteSize(byteCount) {
+export function formatByteSize(byteCount) {
   let size = byteCount;
   let unitIndex = 0;
   while (size >= BYTES_PER_UNIT_STEP && unitIndex < BYTE_SIZE_UNITS.length - 1) {

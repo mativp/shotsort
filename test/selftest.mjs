@@ -1137,6 +1137,167 @@ function whatIsCountedWithoutAnythingBeingWritten() {
     !named.includes('P1.JPG'), named.join());
 }
 
+const BYTES_IN_A_MEGABYTE = 1024 * 1024;
+const BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS = 64 * BYTES_IN_A_MEGABYTE;
+const A_MOMENT_A_CLIP_WAS_SHOT = new Date(2026, 7, 27, 9, 7, 1);
+
+function aDiskHoldingAClipOf(name, sizeInBytes) {
+  const disk = aDirectoryHolding(name, { 'DCIM/P1000001.MOV': movieFile('2026-08-27 09:07:01') });
+  const source = path.join(disk, 'DCIM', 'P1000001.MOV');
+  fs.truncateSync(source, sizeInBytes);
+  return { source, target: path.join(disk, '2026-08-27', 'P1000001.MOV'), original: fs.readFileSync(source) };
+}
+
+function aFilesystemKeepingCountOfOpenFiles(whatItDoesDifferently = {}) {
+  const openDescriptors = new Set();
+  const filesystem = aFilesystemThat({
+    ...whatItDoesDifferently,
+    openSync: (...openArguments) => {
+      const descriptor = fs.openSync(...openArguments);
+      openDescriptors.add(descriptor);
+      return descriptor;
+    },
+    closeSync: (descriptor) => {
+      openDescriptors.delete(descriptor);
+      fs.closeSync(descriptor);
+    },
+  });
+  return { filesystem, openDescriptors };
+}
+
+function aBigClipIsCopiedInChunksSayingHowFarItHasGot() {
+  const { source, target, original } = aDiskHoldingAClipOf('big-clip', BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS);
+  const entry = anEntryFor(source, target, PLACEMENT.intoItsDayFolder);
+  const reports = [];
+  const counted = aFilesystemKeepingCountOfOpenFiles();
+  const outcome = applyPlan([entry], {
+    onBytesWritten: (reportedEntry, bytesWritten) => reports.push([reportedEntry, bytesWritten]),
+    filesystem: counted.filesystem,
+  });
+
+  expect('a clip of 64 MB is copied whole',
+    outcome.placed === 1 && fs.readFileSync(target).equals(original), JSON.stringify(outcome));
+  expect('and says how many bytes are written after every megabyte, for the file being written',
+    reports.length === 64 && reports.every(([reportedEntry, bytesWritten], index) =>
+      reportedEntry === entry && bytesWritten === (index + 1) * BYTES_IN_A_MEGABYTE),
+    reports.map(([, bytesWritten]) => bytesWritten).slice(0, 3).join());
+  expect('and closes both files it opened to do it',
+    counted.openDescriptors.size === 0, [...counted.openDescriptors].join());
+  expect('and keeps the time it was shot',
+    Math.abs(fs.statSync(target).mtime.getTime() - A_MOMENT_A_CLIP_WAS_SHOT.getTime()) < 1000, String(fs.statSync(target).mtime));
+
+  const justUnder = aDiskHoldingAClipOf('clip-just-under', BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS - 1);
+  const reportsJustUnder = [];
+  const outcomeJustUnder = applyPlan([anEntryFor(justUnder.source, justUnder.target, PLACEMENT.intoItsDayFolder)],
+    { onBytesWritten: (_entryBeingWritten, bytesWritten) => reportsJustUnder.push(bytesWritten) });
+  expect('a clip one byte smaller is left to the operating system to copy, and says nothing until it is done',
+    outcomeJustUnder.placed === 1 && reportsJustUnder.length === 0 && fs.readFileSync(justUnder.target).equals(justUnder.original),
+    JSON.stringify(outcomeJustUnder));
+
+  const inPieces = aDiskHoldingAClipOf('clip-in-pieces', BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS);
+  const outcomeInPieces = applyPlan([anEntryFor(inPieces.source, inPieces.target, PLACEMENT.intoItsDayFolder)], {
+    filesystem: aFilesystemThat({
+      writeSync: (descriptor, buffer, offset, length, position) =>
+        fs.writeSync(descriptor, buffer, offset, Math.ceil(length / 3), position),
+    }),
+  });
+  expect('a disk that takes each chunk a piece at a time still ends up with every byte in its place',
+    outcomeInPieces.placed === 1 && fs.readFileSync(inPieces.target).equals(inPieces.original), JSON.stringify(outcomeInPieces));
+
+  const acrossDisks = aDiskHoldingAClipOf('clip-across-disks', BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS);
+  const reportsAcrossDisks = [];
+  const moved = applyPlan([anEntryFor(acrossDisks.source, acrossDisks.target, PLACEMENT.intoItsDayFolder)], {
+    moveInsteadOfCopying: true,
+    onBytesWritten: (_entryBeingWritten, bytesWritten) => reportsAcrossDisks.push(bytesWritten),
+    filesystem: aFilesystemThat({ renameSync: throwing('EXDEV') }),
+  });
+  expect('a big clip moved onto another disk is copied in chunks too, and only then taken off the card',
+    moved.placed === 1 && reportsAcrossDisks.length === 64 && !fs.existsSync(acrossDisks.source)
+    && fs.readFileSync(acrossDisks.target).equals(acrossDisks.original),
+    JSON.stringify(moved));
+}
+
+function aBigClipWhoseCopyGoesWrong() {
+  const cutShort = aDiskHoldingAClipOf('clip-cut-short', BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS);
+  const countedCutShort = aFilesystemKeepingCountOfOpenFiles({
+    readSync: (descriptor, buffer, offset, length, position) =>
+      (position >= 8 * BYTES_IN_A_MEGABYTE ? 0 : fs.readSync(descriptor, buffer, offset, length, position)),
+  });
+  const outcomeCutShort = applyPlan([anEntryFor(cutShort.source, cutShort.target, PLACEMENT.intoItsDayFolder)], {
+    filesystem: countedCutShort.filesystem,
+  });
+  expect('a clip whose card stops giving bytes part way through is counted as failed',
+    outcomeCutShort.failed === 1 && outcomeCutShort.failures[0].reason === 'copy was incomplete, original left untouched',
+    JSON.stringify(outcomeCutShort.failures));
+  expect('and the part that was written is taken away, while the clip on the card is left whole',
+    !fs.existsSync(cutShort.target) && fs.readFileSync(cutShort.source).equals(cutShort.original));
+  expect('with neither file left open',
+    countedCutShort.openDescriptors.size === 0, [...countedCutShort.openDescriptors].join());
+
+  const diskFails = aDiskHoldingAClipOf('clip-disk-fails', BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS);
+  const countedDiskFails = aFilesystemKeepingCountOfOpenFiles({
+    writeSync: (descriptor, buffer, offset, length, position) => {
+      if (position >= 8 * BYTES_IN_A_MEGABYTE) throwing('EIO')();
+      return fs.writeSync(descriptor, buffer, offset, length, position);
+    },
+  });
+  const outcomeDiskFails = applyPlan([anEntryFor(diskFails.source, diskFails.target, PLACEMENT.intoItsDayFolder)], {
+    filesystem: countedDiskFails.filesystem,
+  });
+  expect('a disk that fails part way through a clip is reported with its own reason',
+    outcomeDiskFails.failed === 1 && outcomeDiskFails.failures[0].reason === 'EIO', JSON.stringify(outcomeDiskFails.failures));
+  expect('and leaves no half written clip behind, and no file open',
+    !fs.existsSync(diskFails.target) && countedDiskFails.openDescriptors.size === 0);
+
+  const clash = aDiskHoldingAClipOf('clip-target-taken', BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS);
+  writeFixtureFile(clash.target, Buffer.from('a different clip'));
+  const countedClash = aFilesystemKeepingCountOfOpenFiles();
+  const outcomeClash = applyPlan([anEntryFor(clash.source, clash.target, PLACEMENT.intoItsDayFolder)], { filesystem: countedClash.filesystem });
+  expect('a big clip copied onto a name that filled up after the plan was made is refused',
+    outcomeClash.failed === 1 && outcomeClash.failures[0].reason === 'EEXIST', JSON.stringify(outcomeClash.failures));
+  expect('and the file that was already there is not the one taken away',
+    fs.readFileSync(clash.target, 'utf8') === 'a different clip');
+  expect('and the clip on the card, opened to be copied, is closed again',
+    countedClash.openDescriptors.size === 0, [...countedClash.openDescriptors].join());
+}
+
+function eachFileIsAnnouncedBeforeAndAfterItIsPlaced() {
+  const disk = aDirectoryHolding('announced', {
+    'DCIM/P1.JPG': jpegFile('2026:08:27 09:07:01'),
+    'DCIM/P2.JPG': jpegFile('2026:08:27 10:00:00'),
+    '2026-08-27/P2.JPG': jpegFile('2026:08:27 18:00:00'),
+  });
+  const heard = [];
+  const hear = (what) => (entry) => heard.push(`${what} ${path.basename(entry.sourcePath)}`);
+
+  applyPlan([
+    anEntryFor(path.join(disk, 'DCIM', 'P1.JPG'), path.join(disk, '2026-08-27', 'P1.JPG'), PLACEMENT.intoItsDayFolder),
+    anEntryFor(path.join(disk, 'DCIM', 'P2.JPG'), path.join(disk, '2026-08-27', 'P2.JPG'), PLACEMENT.intoItsDayFolder),
+    anEntryFor(path.join(disk, 'DCIM', 'P3.JPG'), null, PLACEMENT.couldNotBePlaced),
+  ], { onFileStarted: hear('started'), onFilePlaced: hear('placed'), onFileFinished: hear('finished') });
+
+  expect('every file is announced before anything is done with it and again once it is over, even one whose copy is refused',
+    heard.join(', ') === 'started P1.JPG, placed P1.JPG, finished P1.JPG, '
+      + 'started P2.JPG, finished P2.JPG, started P3.JPG, finished P3.JPG',
+    heard.join(', '));
+}
+
+function theProgressLineNeverReachesAnythingButATerminal() {
+  const dump = freshCardDump('progress-off-a-terminal');
+  const copied = runCommand([dump]);
+  const verboseMove = runCommand(['-v', '-m', freshCardDump('progress-off-a-terminal-verbose')]);
+  const drawingCharacters = ['\r', '\x1b'];
+  const drawnInto = (printed) => drawingCharacters.some((character) => printed.includes(character));
+
+  expect('a copy whose output is captured carries no progress line, neither drawn nor taken down',
+    copied.exitCode === EXIT_EVERYTHING_PLACED && !drawnInto(copied.standardError) && !drawnInto(copied.standardOutput),
+    JSON.stringify(copied.standardError));
+  expect('and nor does a --verbose move, the one run that prints above the line',
+    verboseMove.exitCode === EXIT_EVERYTHING_PLACED
+    && !drawnInto(verboseMove.standardError) && !drawnInto(verboseMove.standardOutput),
+    JSON.stringify(verboseMove.standardError));
+}
+
 function tidyingUpFoldersItCannotRead() {
   const disk = aDirectoryHolding('tidying', { 'DCIM/100/P1.JPG': jpegFile('2026:08:27 09:07:01') });
   fs.unlinkSync(path.join(disk, 'DCIM', '100', 'P1.JPG'));
@@ -1361,7 +1522,7 @@ function theModulesThatMustNotTouchTheDisk() {
   const projectRoot = path.join(testDirectory, '..');
   const mustStayPure = [
     'src/clock.mjs', 'src/plan.mjs', 'src/dating.mjs', 'src/extensions.mjs', 'src/dateSource.mjs',
-    'cli/options.mjs', 'cli/report.mjs', 'cli/usage.mjs',
+    'cli/options.mjs', 'cli/progress.mjs', 'cli/report.mjs', 'cli/usage.mjs',
     ...everySourceFileUnder(projectRoot).filter((relativePath) => relativePath.startsWith('src/formats/')),
   ];
   const reachesForTheDisk = /from 'node:fs'|require\('node:fs'\)|\bfs\./;
@@ -1503,6 +1664,10 @@ aCopyOntoAnotherDiskThatCameUpShort();
 aTargetThatAppearedAfterThePlanWasMade();
 aRenameThatFailedForSomeOtherReason();
 whatIsCountedWithoutAnythingBeingWritten();
+aBigClipIsCopiedInChunksSayingHowFarItHasGot();
+aBigClipWhoseCopyGoesWrong();
+eachFileIsAnnouncedBeforeAndAfterItIsPlaced();
+theProgressLineNeverReachesAnythingButATerminal();
 tidyingUpFoldersItCannotRead();
 namingOneFileRatherThanAFolder();
 aFolderTheWalkIsNotAllowedInto();

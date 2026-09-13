@@ -122,19 +122,26 @@ These two settle it by hand instead:
                         date none of them that way: every file that records no
                         date inside itself goes to ${UNDATED_FOLDER_NAME}/
 
+While files are copied or moved, a line on standard error shows how far the
+run has got: the share of the bytes written, the files and bytes so far, the
+time left once a few seconds have given it a rate to go by, and the file being
+written. It is drawn only when standard error is a terminal, and taken down
+before anything else is printed, so a pipe, a file or a script never sees it.
+
   -v, --verbose         print every file as it is placed, as
                         "source -> destination". Files already in the right
                         place are not printed. Nothing is placed under
                         --dry-run, so the two together print no more than
                         --dry-run alone; --dry-run --json is the per-file
                         preview
-  -q, --quiet           print nothing but errors
+  -q, --quiet           print nothing but errors, and no progress line
       --json            print the plan and the result as JSON on standard
                         output: every file with the folder chosen for it, the
                         clock the date came from, and what was done, and a
                         summary carrying everything the notes on standard
                         error would have said. With --dry-run this is the
-                        whole plan, file by file, before anything is written
+                        whole plan, file by file, before anything is written.
+                        No progress line is drawn beside it
   -h, --help            print this text and exit. Run with no arguments,
                         ${PROGRAM_NAME} prints a short version of it instead
   -V, --version         print the version and exit

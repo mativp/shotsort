@@ -50,6 +50,12 @@ when that is given, and the files are copied into them. Under
 the files are moved instead, and any folder the move leaves empty is removed.
 Running the command a second time on the same folder does nothing.
 .PP
+While files are copied or moved, a line on standard error shows how far the run
+has got: the share of the bytes written, the files and bytes so far, the time
+left once a few seconds have given it a rate to go by, and the file being
+written. It is drawn only when standard error is a terminal, and taken down
+before anything else is printed, so a pipe, a file or a script never sees it.
+.PP
 Nothing is ever overwritten and no file is read from a card that is not
 explicitly named. See
 .B SAFETY
@@ -136,7 +142,7 @@ alone;
 is the per\-file preview.
 .TP
 .BR \-q ", " \-\-quiet
-Print nothing but errors.
+Print nothing but errors, and no progress line.
 .TP
 .B \-\-json
 Print the plan and the result as JSON on standard output: every file with the
@@ -145,7 +151,8 @@ summary carrying everything the notes on standard error would have said:
 how many files were dated by the filesystem, how many were left undated, and
 how many names had to be split into numbered subfolders. With
 .B \-\-dry\-run
-this is the whole plan, file by file, before anything is written.
+this is the whole plan, file by file, before anything is written. No progress
+line is drawn beside it.
 .TP
 .BR \-h ", " \-\-help
 Print the full manual \(em every option, how the date is found, what it reads
