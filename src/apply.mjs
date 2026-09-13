@@ -9,7 +9,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PLACEMENT } from './plan.mjs';
 
-function moveFile(filesystem, sourcePath, targetPath, fileTimestamp) {
+function copyContents(filesystem, entry) {
+  filesystem.copyFileSync(entry.sourcePath, entry.targetPath, fs.constants.COPYFILE_EXCL);
+  filesystem.utimesSync(entry.targetPath, entry.fileTimestamp, entry.fileTimestamp);
+}
+
+function moveFile(filesystem, entry) {
+  const { sourcePath, targetPath } = entry;
   if (filesystem.existsSync(targetPath)) {
     throw Object.assign(new Error('target appeared after the plan was made'), { code: 'EEXIST' });
   }
@@ -23,19 +29,13 @@ function moveFile(filesystem, sourcePath, targetPath, fileTimestamp) {
 
   // Across filesystems a move is a copy and a delete, and the delete only happens once the
   // copy is known to be whole.
-  filesystem.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
-  filesystem.utimesSync(targetPath, fileTimestamp, fileTimestamp);
+  copyContents(filesystem, entry);
   const copyIsComplete = filesystem.statSync(targetPath).size === filesystem.statSync(sourcePath).size;
   if (!copyIsComplete) {
     filesystem.unlinkSync(targetPath);
     throw new Error('copy was incomplete, original left untouched');
   }
   filesystem.unlinkSync(sourcePath);
-}
-
-function copyFile(filesystem, sourcePath, targetPath, fileTimestamp) {
-  filesystem.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
-  filesystem.utimesSync(targetPath, fileTimestamp, fileTimestamp);
 }
 
 function removeEmptyDirectoriesUnder(filesystem, directory, isTheDirectoryTheUserNamed) {
@@ -83,8 +83,8 @@ function carryOutOnePlacement(entry, outcome, { moveInsteadOfCopying, onFilePlac
       outcome.duplicates++;
     } else {
       filesystem.mkdirSync(path.dirname(entry.targetPath), { recursive: true });
-      if (moveInsteadOfCopying) moveFile(filesystem, entry.sourcePath, entry.targetPath, entry.fileTimestamp);
-      else copyFile(filesystem, entry.sourcePath, entry.targetPath, entry.fileTimestamp);
+      if (moveInsteadOfCopying) moveFile(filesystem, entry);
+      else copyContents(filesystem, entry);
       outcome.placed++;
     }
     onFilePlaced?.(entry);
