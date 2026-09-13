@@ -6,3 +6,5 @@
 export const THE_FILESYSTEM_HONOURS_PERMISSIONS = process.platform !== 'win32' && process.getuid?.() !== 0;
 
 export const THE_PLATFORM_PIPES_OUTPUT_THE_UNIX_WAY = process.platform !== 'win32';
+
+export const THE_PLATFORM_LISTS_OPEN_FILES_UNDER_DEV_FD = process.platform !== 'win32';

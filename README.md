@@ -406,8 +406,9 @@ this is the figure that says whether the tests assert anything rather than merel
 execute the code. Survivors are treated as real gaps rather than noise. Stryker
 is not a dependency of this package and is not in the manifest; the two configs
 are committed so a run is reproducible. Each module is put to the cheapest suites
-that exercise it — the ones that decide things to the unit suite, the ones whose
-job is the disk to the disk and command line suites — and a run stops at the
+that exercise it — the ones that decide things to the unit suite and the one read
+that opens a file, the ones whose job is the disk to the disk and command line
+suites — and a run stops at the
 first test that fails, one failure being enough to settle a mutant:
 
 ```sh

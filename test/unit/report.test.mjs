@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLACEMENT, countPlacements } from '../../src/plan.mjs';
+import { DATE_SOURCE } from '../../src/dateSource.mjs';
 import { fileAsItIsPlaced, reportAsJson, reportForATerminal } from '../../cli/report.mjs';
 
 // The report is handed the lines it would print rather than a terminal, so what a run says
@@ -100,6 +101,17 @@ test('the JSON says everything the terminal does', async (context) => {
   ));
   await context.test('a file with no clock is reported as having no stamp rather than a made up one',
     () => assert.equal(said.actions[0].stamp, null));
+
+  const datedEveryWay = planOf(Object.values(DATE_SOURCE).map((dateSource) => ({
+    ...placedInto('2026-08-27', PLACEMENT.intoItsDayFolder), dateSource,
+  })));
+  const saidOfEachSource = JSON.parse(
+    linesPrintedBy(reportAsJson, { plan: datedEveryWay, outcome, fileCount: 4, options: { dryRun: false } }).printed.join('\n'),
+  );
+  await context.test('where each date came from is spelled the way a script reading the json was told it would be', () => assert.deepEqual(
+    saidOfEachSource.actions.map((action) => action.dateFrom),
+    ['exif', 'video', 'sibling', 'file-timestamp'],
+  ));
 
   const quietly = { dryRun: false, moveInsteadOfCopying: false, quiet: true, verbose: false };
   const { printed: nothing, complained } = linesPrintedBy(reportForATerminal, { plan, outcome, options: quietly });
