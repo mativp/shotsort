@@ -684,6 +684,7 @@ function theProgressLineIsOnlyDrawnWhereSomeoneIsWatching() {
   ]) {
     const progress = progressLineFor([photo], options, terminal, () => 0);
     progress.startedOn(photo);
+    progress.bytesWrittenTo(photo, BYTES_IN_A_MEGABYTE);
     progress.printAbove(() => printedAnyway.push(whereItWouldGo));
     progress.finishedWith(photo);
     progress.finish();
@@ -695,10 +696,13 @@ function theProgressLineIsOnlyDrawnWhereSomeoneIsWatching() {
   const nothingToWrite = aTerminalWatching();
   const duplicate = aPlacementOf('P2.JPG', BYTES_IN_A_MEGABYTE, PLACEMENT.duplicateOfAFileAlreadySorted);
   const progressOverDuplicates = progressLineFor([duplicate], copying, nothingToWrite, () => 0);
+  const printedForTheDuplicate = [];
   progressOverDuplicates.startedOn(duplicate);
+  progressOverDuplicates.printAbove(() => printedForTheDuplicate.push('skipped'));
+  progressOverDuplicates.finishedWith(duplicate);
   progressOverDuplicates.finish();
-  expect('and nothing is drawn for a plan that writes no file, there being no wait to show',
-    nothingToWrite.written.length === 0, nothingToWrite.written.join());
+  expect('and nothing is drawn for a plan that writes no file, even as --verbose names each duplicate it skips',
+    nothingToWrite.written.length === 0 && printedForTheDuplicate.length === 1, nothingToWrite.written.join());
 }
 
 const A_MOMENT_FAR_ENOUGH_FROM_ZERO_NOT_TO_BE_MISTAKEN_FOR_A_LENGTH_OF_TIME = Date.UTC(2026, 7, 27, 9, 0, 0);
@@ -787,18 +791,30 @@ function theProgressLineAsTheFilesGoBy() {
   expect('the time left is the bytes still to come at the rate so far: 3500 MB at 50 MB a second is about a minute',
     lastLineDrawnOn(slowTerminal).includes('about 1 min left'), lastLineDrawnOn(slowTerminal));
 
-  const bigFilesTerminal = aTerminalWatching();
-  const tiny = aPlacementOf('P1.JPG', 1);
-  const justTooSmallToName = aPlacementOf('P1000002.MOV', 64 * BYTES_IN_A_MEGABYTE - 1);
-  const justBigEnoughToName = aPlacementOf('P1000003.MOV', 64 * BYTES_IN_A_MEGABYTE);
-  const bigFilesProgress = progressLineFor([tiny, justTooSmallToName, justBigEnoughToName], copying, bigFilesTerminal, () => A_MOMENT_FAR_ENOUGH_FROM_ZERO_NOT_TO_BE_MISTAKEN_FOR_A_LENGTH_OF_TIME);
-  bigFilesProgress.startedOn(tiny);
-  bigFilesProgress.startedOn(justTooSmallToName);
-  expect('a file under 64 MB starting straight after a redraw waits for the next one',
-    lastLineDrawnOn(bigFilesTerminal).endsWith('P1.JPG'), lastLineDrawnOn(bigFilesTerminal));
-  bigFilesProgress.startedOn(justBigEnoughToName);
-  expect('while one of 64 MB takes long enough to be named the moment it starts',
-    lastLineDrawnOn(bigFilesTerminal).endsWith('P1000003.MOV'), lastLineDrawnOn(bigFilesTerminal));
+  const clipClock = aClockStoppedAtTheStart();
+  const clipTerminal = aTerminalWatching();
+  const bigClip = aPlacementOf('P1000001.MOV', 4000 * BYTES_IN_A_MEGABYTE);
+  const nextPhoto = aPlacementOf('P1000002.JPG', 8 * BYTES_IN_A_MEGABYTE);
+  const clipProgress = progressLineFor([bigClip, nextPhoto], copying, clipTerminal, clipClock.now);
+  clipProgress.startedOn(bigClip);
+  clipClock.moveTo(99);
+  clipProgress.bytesWrittenTo(bigClip, 100 * BYTES_IN_A_MEGABYTE);
+  expect('bytes of a big file written less than a tenth of a second after the last redraw do not draw again',
+    linesDrawnOn(clipTerminal).length === 1, linesDrawnOn(clipTerminal).length);
+  clipClock.moveTo(100);
+  clipProgress.bytesWrittenTo(bigClip, 1000 * BYTES_IN_A_MEGABYTE);
+  expect('a tenth of a second on, the bytes written so far move the line on while the file is still being written',
+    lastLineDrawnOn(clipTerminal) === 'copying  24%  [#######.......................]  0 of 2 files  1000.0 MB of 3.9 GB  P1000001.MOV',
+    lastLineDrawnOn(clipTerminal));
+  clipClock.moveTo(3000);
+  clipProgress.bytesWrittenTo(bigClip, 2000 * BYTES_IN_A_MEGABYTE);
+  expect('and the time left is guessed from them: 2000 MB in three seconds leaves about three seconds for the rest',
+    lastLineDrawnOn(clipTerminal).includes('under a minute left'), lastLineDrawnOn(clipTerminal));
+  clipProgress.finishedWith(bigClip);
+  clipClock.moveTo(3100);
+  clipProgress.startedOn(nextPhoto);
+  expect('once the file is finished its bytes are counted once, not again on top of what was reported',
+    lastLineDrawnOn(clipTerminal).includes('1 of 2 files  3.9 GB of 3.9 GB'), lastLineDrawnOn(clipTerminal));
 
   for (const [howItFailsToSay, columns] of [['gives no width', undefined], ['says it is no columns wide', 0]]) {
     const unmeasuredTerminal = { ...aTerminalWatching(), columns };

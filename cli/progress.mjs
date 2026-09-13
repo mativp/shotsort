@@ -6,9 +6,6 @@ const RETURN_TO_THE_START_OF_THE_LINE = '\r';
 const ERASE_TO_THE_END_OF_THE_LINE = '\x1b[K';
 
 const MILLISECONDS_BETWEEN_REDRAWS = 100;
-// A copy blocks the program until the file is written, so nothing can redraw the line
-// during it: a file this big is drawn the moment it starts instead of at the next redraw.
-const BYTES_IN_A_FILE_WORTH_NAMING_AS_IT_STARTS = 64 * 1024 * 1024;
 const MILLISECONDS_WATCHED_BEFORE_THE_TIME_LEFT_IS_GUESSED = 3000;
 
 const WIDTH_TO_ASSUME_WHEN_THE_TERMINAL_DOES_NOT_SAY = 80;
@@ -70,6 +67,7 @@ export const aProgressLineBelongsOn = (terminal, { quiet, json }) => terminal.is
 
 const NO_PROGRESS_LINE = Object.freeze({
   startedOn: () => {},
+  bytesWrittenTo: () => {},
   finishedWith: () => {},
   printAbove: (print) => print(),
   finish: () => {},
@@ -90,6 +88,7 @@ export function progressLineFor(placements, options, terminal, now = Date.now) {
     millisecondsLeft: null,
     fileBeingWritten: null,
   };
+  let bytesOfTheFilesFinished = 0;
   let firstFileStartedAt = null;
   let lastDrawnAt = Number.NEGATIVE_INFINITY;
   let lineIsShowing = false;
@@ -99,6 +98,8 @@ export function progressLineFor(placements, options, terminal, now = Date.now) {
     if (millisecondsWatched < MILLISECONDS_WATCHED_BEFORE_THE_TIME_LEFT_IS_GUESSED || progress.bytesDone === 0) return null;
     return ((progress.bytesInAll - progress.bytesDone) * millisecondsWatched) / progress.bytesDone;
   };
+
+  const redrawIsDue = () => now() - lastDrawnAt >= MILLISECONDS_BETWEEN_REDRAWS;
 
   const draw = () => {
     progress.millisecondsLeft = guessTheTimeLeft();
@@ -118,13 +119,17 @@ export function progressLineFor(placements, options, terminal, now = Date.now) {
       if (!isWritten(entry)) return;
       firstFileStartedAt ??= now();
       progress.fileBeingWritten = path.basename(entry.sourcePath);
-      const redrawIsDue = now() - lastDrawnAt >= MILLISECONDS_BETWEEN_REDRAWS;
-      if (redrawIsDue || entry.sizeInBytes >= BYTES_IN_A_FILE_WORTH_NAMING_AS_IT_STARTS) draw();
+      if (redrawIsDue()) draw();
+    },
+    bytesWrittenTo: (_entryBeingWritten, bytesWritten) => {
+      progress.bytesDone = bytesOfTheFilesFinished + bytesWritten;
+      if (redrawIsDue()) draw();
     },
     finishedWith: (entry) => {
       if (!isWritten(entry)) return;
       progress.filesDone++;
-      progress.bytesDone += entry.sizeInBytes;
+      bytesOfTheFilesFinished += entry.sizeInBytes;
+      progress.bytesDone = bytesOfTheFilesFinished;
     },
     printAbove: (print) => {
       if (!lineIsShowing) {

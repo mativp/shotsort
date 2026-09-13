@@ -46,6 +46,7 @@ function placeEveryFile(plan, options) {
       moveInsteadOfCopying: options.moveInsteadOfCopying,
       directoriesToTidy: directoriesAmong(options.inputPaths),
       onFileStarted: progress.startedOn,
+      onBytesWritten: progress.bytesWrittenTo,
       onFileFinished: progress.finishedWith,
       onFilePlaced: options.verbose
         ? (entry) => {
