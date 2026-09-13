@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WHAT_TO_DO, decideWhatToDo } from '../cli/options.mjs';
+import { progressLineFor } from '../cli/progress.mjs';
 import { fileAsItIsPlaced, reportAsJson, reportForATerminal } from '../cli/report.mjs';
 import { EXIT_CODE, PROGRAM_NAME, USAGE_IN_BRIEF, USAGE_IN_FULL } from '../cli/usage.mjs';
 import { applyPlan } from '../src/apply.mjs';
@@ -38,6 +39,26 @@ function directoriesAmong(inputPaths) {
   });
 }
 
+function placeEveryFile(plan, options) {
+  const progress = progressLineFor(plan.placements, options, process.stderr);
+  try {
+    return applyPlan(plan.placements, {
+      moveInsteadOfCopying: options.moveInsteadOfCopying,
+      directoriesToTidy: directoriesAmong(options.inputPaths),
+      onFileStarted: progress.startedOn,
+      onFileFinished: progress.finishedWith,
+      onFilePlaced: options.verbose
+        ? (entry) => {
+          const line = fileAsItIsPlaced(entry, options.moveInsteadOfCopying);
+          if (line !== null) progress.printAbove(() => out(line));
+        }
+        : null,
+    });
+  } finally {
+    progress.finish();
+  }
+}
+
 function sort(options) {
   let candidateFiles;
   try {
@@ -62,18 +83,7 @@ function sort(options) {
     filesystemDateUse: options.filesystemDateUse,
   }, probe);
 
-  const outcome = options.dryRun
-    ? countPlacements(plan.placements)
-    : applyPlan(plan.placements, {
-      moveInsteadOfCopying: options.moveInsteadOfCopying,
-      directoriesToTidy: directoriesAmong(options.inputPaths),
-      onFilePlaced: options.verbose
-        ? (entry) => {
-          const line = fileAsItIsPlaced(entry, options.moveInsteadOfCopying);
-          if (line !== null) out(line);
-        }
-        : null,
-    });
+  const outcome = options.dryRun ? countPlacements(plan.placements) : placeEveryFile(plan, options);
 
   const report = options.json ? reportAsJson : reportForATerminal;
   report({ plan, outcome, fileCount: candidateFiles.length, options }, { out, error });

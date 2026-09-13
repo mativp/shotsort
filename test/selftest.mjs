@@ -1158,6 +1158,22 @@ function eachFileIsAnnouncedBeforeAndAfterItIsPlaced() {
     heard.join(', '));
 }
 
+function theProgressLineNeverReachesAnythingButATerminal() {
+  const dump = freshCardDump('progress-off-a-terminal');
+  const copied = runCommand([dump]);
+  const verboseMove = runCommand(['-v', '-m', freshCardDump('progress-off-a-terminal-verbose')]);
+  const drawingCharacters = ['\r', '\x1b'];
+  const drawnInto = (printed) => drawingCharacters.some((character) => printed.includes(character));
+
+  expect('a copy whose output is captured carries no progress line, neither drawn nor taken down',
+    copied.exitCode === EXIT_EVERYTHING_PLACED && !drawnInto(copied.standardError) && !drawnInto(copied.standardOutput),
+    JSON.stringify(copied.standardError));
+  expect('and nor does a --verbose move, the one run that prints above the line',
+    verboseMove.exitCode === EXIT_EVERYTHING_PLACED
+    && !drawnInto(verboseMove.standardError) && !drawnInto(verboseMove.standardOutput),
+    JSON.stringify(verboseMove.standardError));
+}
+
 function tidyingUpFoldersItCannotRead() {
   const disk = aDirectoryHolding('tidying', { 'DCIM/100/P1.JPG': jpegFile('2026:08:27 09:07:01') });
   fs.unlinkSync(path.join(disk, 'DCIM', '100', 'P1.JPG'));
@@ -1525,6 +1541,7 @@ aTargetThatAppearedAfterThePlanWasMade();
 aRenameThatFailedForSomeOtherReason();
 whatIsCountedWithoutAnythingBeingWritten();
 eachFileIsAnnouncedBeforeAndAfterItIsPlaced();
+theProgressLineNeverReachesAnythingButATerminal();
 tidyingUpFoldersItCannotRead();
 namingOneFileRatherThanAFolder();
 aFolderTheWalkIsNotAllowedInto();
