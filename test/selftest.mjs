@@ -1137,6 +1137,27 @@ function whatIsCountedWithoutAnythingBeingWritten() {
     !named.includes('P1.JPG'), named.join());
 }
 
+function eachFileIsAnnouncedBeforeAndAfterItIsPlaced() {
+  const disk = aDirectoryHolding('announced', {
+    'DCIM/P1.JPG': jpegFile('2026:08:27 09:07:01'),
+    'DCIM/P2.JPG': jpegFile('2026:08:27 10:00:00'),
+    '2026-08-27/P2.JPG': jpegFile('2026:08:27 18:00:00'),
+  });
+  const heard = [];
+  const hear = (what) => (entry) => heard.push(`${what} ${path.basename(entry.sourcePath)}`);
+
+  applyPlan([
+    anEntryFor(path.join(disk, 'DCIM', 'P1.JPG'), path.join(disk, '2026-08-27', 'P1.JPG'), PLACEMENT.intoItsDayFolder),
+    anEntryFor(path.join(disk, 'DCIM', 'P2.JPG'), path.join(disk, '2026-08-27', 'P2.JPG'), PLACEMENT.intoItsDayFolder),
+    anEntryFor(path.join(disk, 'DCIM', 'P3.JPG'), null, PLACEMENT.couldNotBePlaced),
+  ], { onFileStarted: hear('started'), onFilePlaced: hear('placed'), onFileFinished: hear('finished') });
+
+  expect('every file is announced before anything is done with it and again once it is over, even one whose copy is refused',
+    heard.join(', ') === 'started P1.JPG, placed P1.JPG, finished P1.JPG, '
+      + 'started P2.JPG, finished P2.JPG, started P3.JPG, finished P3.JPG',
+    heard.join(', '));
+}
+
 function tidyingUpFoldersItCannotRead() {
   const disk = aDirectoryHolding('tidying', { 'DCIM/100/P1.JPG': jpegFile('2026:08:27 09:07:01') });
   fs.unlinkSync(path.join(disk, 'DCIM', '100', 'P1.JPG'));
@@ -1503,6 +1524,7 @@ aCopyOntoAnotherDiskThatCameUpShort();
 aTargetThatAppearedAfterThePlanWasMade();
 aRenameThatFailedForSomeOtherReason();
 whatIsCountedWithoutAnythingBeingWritten();
+eachFileIsAnnouncedBeforeAndAfterItIsPlaced();
 tidyingUpFoldersItCannotRead();
 namingOneFileRatherThanAFolder();
 aFolderTheWalkIsNotAllowedInto();

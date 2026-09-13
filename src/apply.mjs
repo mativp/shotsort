@@ -97,7 +97,8 @@ function carryOutOnePlacement(entry, outcome, { moveInsteadOfCopying, onFilePlac
 // Failures come back as the path and the reason, not as a finished sentence: how to word
 // them for a terminal is the command line's business, not this module's.
 export function applyPlan(placements, {
-  moveInsteadOfCopying = false, directoriesToTidy = [], onFilePlaced = null, filesystem = fs,
+  moveInsteadOfCopying = false, directoriesToTidy = [],
+  onFileStarted = null, onFilePlaced = null, onFileFinished = null, filesystem = fs,
 } = {}) {
   const outcome = {
     placed: 0, alreadyInPlace: 0, duplicates: 0, failed: 0,
@@ -105,7 +106,9 @@ export function applyPlan(placements, {
   };
 
   for (const entry of placements) {
+    onFileStarted?.(entry);
     carryOutOnePlacement(entry, outcome, { moveInsteadOfCopying, onFilePlaced, filesystem });
+    onFileFinished?.(entry);
   }
 
   if (moveInsteadOfCopying) {
