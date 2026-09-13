@@ -65,6 +65,35 @@ function removeEmptyDirectoriesUnder(filesystem, directory, isTheDirectoryTheUse
   return directoriesRemoved;
 }
 
+function carryOutOnePlacement(entry, outcome, { moveInsteadOfCopying, onFilePlaced, filesystem }) {
+  if (entry.placement === PLACEMENT.couldNotBePlaced) {
+    outcome.failed++;
+    outcome.failures.push({ sourcePath: entry.sourcePath, reason: entry.failureReason });
+    return;
+  }
+  if (entry.placement === PLACEMENT.alreadyInItsDayFolder) {
+    outcome.alreadyInPlace++;
+    onFilePlaced?.(entry);
+    return;
+  }
+
+  try {
+    if (entry.placement === PLACEMENT.duplicateOfAFileAlreadySorted) {
+      if (moveInsteadOfCopying) filesystem.unlinkSync(entry.sourcePath);
+      outcome.duplicates++;
+    } else {
+      filesystem.mkdirSync(path.dirname(entry.targetPath), { recursive: true });
+      if (moveInsteadOfCopying) moveFile(filesystem, entry.sourcePath, entry.targetPath, entry.fileTimestamp);
+      else copyFile(filesystem, entry.sourcePath, entry.targetPath, entry.fileTimestamp);
+      outcome.placed++;
+    }
+    onFilePlaced?.(entry);
+  } catch (error) {
+    outcome.failed++;
+    outcome.failures.push({ sourcePath: entry.sourcePath, reason: error.code ?? error.message });
+  }
+}
+
 // Failures come back as the path and the reason, not as a finished sentence: how to word
 // them for a terminal is the command line's business, not this module's.
 export function applyPlan(placements, {
@@ -76,32 +105,7 @@ export function applyPlan(placements, {
   };
 
   for (const entry of placements) {
-    if (entry.placement === PLACEMENT.couldNotBePlaced) {
-      outcome.failed++;
-      outcome.failures.push({ sourcePath: entry.sourcePath, reason: entry.failureReason });
-      continue;
-    }
-    if (entry.placement === PLACEMENT.alreadyInItsDayFolder) {
-      outcome.alreadyInPlace++;
-      onFilePlaced?.(entry);
-      continue;
-    }
-
-    try {
-      if (entry.placement === PLACEMENT.duplicateOfAFileAlreadySorted) {
-        if (moveInsteadOfCopying) filesystem.unlinkSync(entry.sourcePath);
-        outcome.duplicates++;
-      } else {
-        filesystem.mkdirSync(path.dirname(entry.targetPath), { recursive: true });
-        if (moveInsteadOfCopying) moveFile(filesystem, entry.sourcePath, entry.targetPath, entry.fileTimestamp);
-        else copyFile(filesystem, entry.sourcePath, entry.targetPath, entry.fileTimestamp);
-        outcome.placed++;
-      }
-      onFilePlaced?.(entry);
-    } catch (error) {
-      outcome.failed++;
-      outcome.failures.push({ sourcePath: entry.sourcePath, reason: error.code ?? error.message });
-    }
+    carryOutOnePlacement(entry, outcome, { moveInsteadOfCopying, onFilePlaced, filesystem });
   }
 
   if (moveInsteadOfCopying) {
