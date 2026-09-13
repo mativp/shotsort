@@ -33,7 +33,7 @@ class TheCommandLineWasWrong extends Error {
 
 class NothingToDoButPrint extends Error {
   constructor(result) {
-    super('nothing to do but print');
+    super();
     this.result = result;
   }
 }

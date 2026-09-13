@@ -30,7 +30,7 @@ export const readTheClockInsideEachFile = (candidateFiles, { readClock = readCam
 const sameShotKey = (filePath) =>
   path.join(path.dirname(filePath), path.basename(filePath, path.extname(filePath))).toLowerCase();
 
-const shotNameAlone = (filePath) => path.basename(filePath, path.extname(filePath)).toLowerCase();
+const shotNameAlone = (filePath) => path.basename(sameShotKey(filePath));
 
 // A raw that records no date of its own takes the date of the jpeg shot alongside it.
 // Across card slots there is no folder to go on, so a name is only trusted when the whole

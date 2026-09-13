@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   cameraClockFrom, cameraClockFromDateWrittenOut, cameraClockFromExifText, cameraClockFromIso8601,
-  compareCameraClocks, dayFolderFor, formatCameraClock, layoutIsUsable,
+  cameraClockToMilliseconds, cameraClocksAreTheSameMoment, compareCameraClocks, dayFolderFor, formatCameraClock,
+  isPlausibleCameraClock, layoutIsUsable,
 } from '../../src/clock.mjs';
 
 test('clocks compare as a total order', async (context) => {
@@ -69,4 +70,64 @@ test('a clock is built only from fields that were there', async (context) => {
     () => assert.equal(formatCameraClock(cameraClockFromDateWrittenOut('2001/ 1/27 13:42')), '2001-01-27 13:42:00'));
   await context.test('a month name that is no month is not taken for one',
     () => assert.equal(cameraClockFromDateWrittenOut('Xxx, 04 Zzz 2021 05:06:07 +0000'), null));
+});
+
+const readOut = (clock) => (clock === null ? null : formatCameraClock(clock));
+
+test('clocks that differ in a single field', async (context) => {
+  const at = (year, month, day, hour, minute, second) => cameraClockFrom(year, month, day, hour, minute, second);
+  const oneFieldLater = [
+    ['year', at(2027, 8, 27, 10, 30, 0)], ['month', at(2026, 9, 27, 10, 30, 0)], ['day', at(2026, 8, 28, 10, 30, 0)],
+    ['hour', at(2026, 8, 27, 11, 30, 0)], ['minute', at(2026, 8, 27, 10, 31, 0)], ['second', at(2026, 8, 27, 10, 30, 1)],
+  ];
+  for (const [field, later] of oneFieldLater) {
+    await context.test(`one a ${field} later sorts after it and is not the same moment`, () => assert.deepEqual(
+      [compareCameraClocks(at(2026, 8, 27, 10, 30, 0), later), cameraClocksAreTheSameMoment(at(2026, 8, 27, 10, 30, 0), later)],
+      [-1, false],
+    ));
+  }
+  await context.test('and a clock is the same moment as one with every field the same',
+    () => assert.equal(cameraClocksAreTheSameMoment(at(2026, 8, 27, 10, 30, 0), at(2026, 8, 27, 10, 30, 0)), true));
+  await context.test('a clock is counted in milliseconds as the local time it names', () => assert.equal(
+    cameraClockToMilliseconds(at(2026, 8, 27, 10, 30, 0)),
+    new Date(2026, 7, 27, 10, 30, 0).getTime(),
+  ));
+});
+
+test('the years a camera clock may plausibly name', async (context) => {
+  const inTheYear = (year) => isPlausibleCameraClock(cameraClockFrom(year, 1, 1, 0, 0, 0));
+  await context.test('the earliest year plausible and the latest are both plausible', () => assert.deepEqual([inTheYear(1995), inTheYear(2100)], [true, true]));
+  await context.test('and the years either side of them are not', () => assert.deepEqual([inTheYear(1994), inTheYear(2101)], [false, false]));
+});
+
+test('the shapes a date is written in', async (context) => {
+  await context.test('Exif text with anything in front of the date is not read as one',
+    () => assert.equal(cameraClockFromExifText('x2026:08:27 10:30:00'), null));
+  await context.test('a stamp is only UTC when its Z ends it', () => assert.equal(
+    readOut(cameraClockFromIso8601('2026-08-28T09:15:00+0200 CEST (Zurich)')),
+    '2026-08-28 09:15:00',
+  ));
+  await context.test('however much space follows the Z', () => assert.equal(cameraClockFromIso8601('2026-08-28T09:15:00Z   '), null));
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  await context.test('every month is read by its name', () => assert.deepEqual(
+    monthNames.map((name) => readOut(cameraClockFromDateWrittenOut(`Mon ${name} 12 10:30:00 2026`))?.slice(5, 7)),
+    ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'],
+  ));
+  await context.test('a name that is no month is not taken for one in the shape with the year last',
+    () => assert.equal(cameraClockFromDateWrittenOut('Thu Zzz 04 05:06:07 2021'), null));
+  await context.test('the shape with the year last is read however the gaps are padded',
+    () => assert.equal(readOut(cameraClockFromDateWrittenOut('Thu Mar  4  05:06:07  2021')), '2021-03-04 05:06:07'));
+  await context.test('and so is the shape with the year in the middle, with its month spelled out in full',
+    () => assert.equal(readOut(cameraClockFromDateWrittenOut('Sat, 14  October  2025  15:53:46 +0000')), '2025-10-14 15:53:46'));
+  await context.test('a date in numbers is read with a separator after its day and room before its time',
+    () => assert.equal(readOut(cameraClockFromDateWrittenOut('2001/01/27/  13:42:00')), '2001-01-27 13:42:00'));
+});
+
+test('the escapes that name a day in a layout', async (context) => {
+  await context.test('each of them names a day on its own', () => assert.deepEqual(
+    ['%Y', '%m', '%d', '%F'].map(layoutIsUsable),
+    [true, true, true, true],
+  ));
+  await context.test('and an escape that is none of them does not', () => assert.equal(layoutIsUsable('%e/%s'), false));
 });

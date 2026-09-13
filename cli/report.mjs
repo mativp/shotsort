@@ -105,7 +105,7 @@ export function fileAsItIsPlaced(entry, moveInsteadOfCopying) {
 }
 
 export function reportForATerminal({ plan, outcome, options }, { out, error }) {
-  if (!options.quiet && !options.verbose && plan.placements.length > 0) {
+  if (!options.quiet && !options.verbose) {
     for (const line of folderSummaryLines(plan.placements)) out(line);
   }
   if (!options.quiet) out(outcomeLine(outcome, options));

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WHAT_TO_DO, decideWhatToDo } from '../../cli/options.mjs';
+import { FILESYSTEM_DATE_USE } from '../../src/dating.mjs';
 
 test('reading the command line', async (context) => {
   await context.test('clustered short options are each applied', () => assert.ok(
@@ -41,8 +42,10 @@ test('reading the command line', async (context) => {
     () => assert.match(decideWhatToDo(['-Z']).problem, /unrecognised option '-Z'/));
   await context.test('an absolute --layout is refused as such',
     () => assert.match(decideWhatToDo(['--layout', '/etc/%F', '/card']).problem, /--layout must be a relative folder name/));
-  await context.test('a --layout holding no date escape is refused as such',
-    () => assert.match(decideWhatToDo(['--layout', 'photos', '/card']).problem, /--layout must be a relative folder name/));
+  await context.test('a --layout holding no date escape is refused, naming every escape that would do', () => assert.equal(
+    decideWhatToDo(['--layout', 'photos', '/card']).problem,
+    '--layout must be a relative folder name using %Y, %m, %d or %F',
+  ));
   await context.test('the -0 that used to take a file list on standard input is now just an unknown option',
     () => assert.match(decideWhatToDo(['-0']).problem, /unrecognised option '-0'/));
   await context.test('--verbose together with --quiet is refused for contradicting, not for anything else',
@@ -59,4 +62,22 @@ test('reading the command line', async (context) => {
     () => assert.equal(decideWhatToDo(['-V']).whatToDo, WHAT_TO_DO.printVersion));
   await context.test('a well formed command line comes back as something to sort',
     () => assert.equal(decideWhatToDo(['/card']).whatToDo, WHAT_TO_DO.sort));
+});
+
+test('what each option sets', async (context) => {
+  const optionsFor = (commandLine) => decideWhatToDo([...commandLine, '/card']).options;
+  await context.test('a folder named with no option is sorted with nothing else changed', () => assert.deepEqual(
+    (({ dryRun, moveInsteadOfCopying, verbose, quiet, json, destination }) => ({ dryRun, moveInsteadOfCopying, verbose, quiet, json, destination }))(optionsFor([])),
+    { dryRun: false, moveInsteadOfCopying: false, verbose: false, quiet: false, json: false, destination: null },
+  ));
+  await context.test('--dest names the folder the day folders go into', () => assert.equal(optionsFor(['--dest', '/library']).destination, '/library'));
+  await context.test('--json asks for the report as json', () => assert.equal(optionsFor(['--json']).json, true));
+  await context.test('--use-filesystem-date takes every filesystem date', () => assert.equal(optionsFor(['--use-filesystem-date']).filesystemDateUse, FILESYSTEM_DATE_USE.always));
+  await context.test('--ignore-filesystem-date takes none', () => assert.equal(optionsFor(['--ignore-filesystem-date']).filesystemDateUse, FILESYSTEM_DATE_USE.never));
+  await context.test('--day-start refuses an hour before the first and one that is not whole', () => assert.deepEqual(
+    [decideWhatToDo(['--day-start', '-1', '/card']).whatToDo, decideWhatToDo(['--day-start', '1.5', '/card']).whatToDo],
+    [WHAT_TO_DO.refuse, WHAT_TO_DO.refuse],
+  ));
+  await context.test('an argument that is not text is a mistake in the program, not a refusal to report',
+    () => assert.throws(() => decideWhatToDo([null]), TypeError));
 });

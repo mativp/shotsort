@@ -117,3 +117,82 @@ test('two files alike in every way but their path', async (context) => {
   await context.test('and the one whose path sorts first takes the first numbered subfolder',
     () => assert.equal(inOneOrder.placements[0].targetPath, asThisPlatformSpellsIt('/card/2026-09-01/01/SAME.JPG')));
 });
+
+const shotAt = (filePath, exifText, sizeInBytes = 1000) => candidate(filePath, { clock: exif(exifText), sizeInBytes });
+const targetOf = (plan, sourceEnd) => plan.placements.find((entry) => entry.sourcePath.endsWith(sourceEnd)).targetPath;
+
+test('the order two same-named photos of a day are numbered in', async (context) => {
+  await context.test('the earlier one takes the first subfolder, however large it is and wherever it sits', () => assert.equal(
+    targetOf(buildPlan([shotAt('/card/100/A1.JPG', '2026:09:01 18:00:00', 1000), shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00', 9000)], {}, probeOver([])), '101/A1.JPG'),
+    asThisPlatformSpellsIt('/card/2026-09-01/01/A1.JPG'),
+  ));
+  await context.test('of two taken at one moment, the smaller does', () => assert.equal(
+    targetOf(buildPlan([shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00', 9000), shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00', 1000)], {}, probeOver([])), '101/A1.JPG'),
+    asThisPlatformSpellsIt('/card/2026-09-01/01/A1.JPG'),
+  ));
+  await context.test('and of two the same size too, the one whose path sorts first', () => assert.equal(
+    targetOf(buildPlan([shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00'), shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00')], {}, probeOver([])), '100/A1.JPG'),
+    asThisPlatformSpellsIt('/card/2026-09-01/01/A1.JPG'),
+  ));
+  await context.test('two files of different sizes are never the same photo, whatever the probe says of their contents', () => assert.equal(
+    buildPlan([shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00', 1000), shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00', 2000)],
+      {}, probeOver([], [['/card/100/A1.JPG', '/card/101/A1.JPG']])).namesSplitIntoSubfolders,
+    1,
+  ));
+});
+
+test('the folders a file is placed into', async (context) => {
+  await context.test('a file with no date goes to the folder named undated',
+    () => assert.equal(buildPlan([candidate('/card/DCIM/CLIP.MTS')], { filesystemDateUse: 'never' }, probeOver([])).placements[0].folderName, 'undated'));
+  await context.test('the layout and the hour the day starts at decide the day folder', () => assert.equal(
+    buildPlan([shotAt('/card/DCIM/P1.JPG', '2026:08:28 01:30:00')], { layout: '%Y/%F', hourTheDayStartsAt: 4 }, probeOver([])).placements[0].folderName,
+    '2026/2026-08-27',
+  ));
+
+  const inAFolderOfItsDay = (folder) => buildPlan([shotAt(`/card/2026-08-27/${folder}/P1.JPG`, '2026:08:27 10:00:00')], {}, probeOver([])).placements[0];
+  await context.test('a photo in a folder of its day that is not numbered is placed in the day folder itself', () => assert.deepEqual(
+    ['raw', 'x01', '01x'].map((folder) => inAFolderOfItsDay(folder).targetPath),
+    ['raw', 'x01', '01x'].map(() => asThisPlatformSpellsIt('/card/2026-08-27/P1.JPG')),
+  ));
+  await context.test('and so is one in a numbered folder that is not under its day', () => assert.equal(
+    buildPlan([shotAt('/card/01/P1.JPG', '2026:08:27 10:00:00')], {}, probeOver([])).placements[0].targetPath,
+    asThisPlatformSpellsIt('/card/2026-08-27/P1.JPG'),
+  ));
+
+  const alreadyThere = shotAt('/card/2026-08-27/P1.JPG', '2026:08:27 10:00:00');
+  const anotherPhotoOfThatName = shotAt('/card/DCIM/P1.JPG', '2026:08:27 11:00:00');
+  await context.test('a photo already in its day folder stays there, though another photo of that day shares its name', () => assert.equal(
+    buildPlan([alreadyThere, anotherPhotoOfThatName], {}, probeOver(['/card/2026-08-27/P1.JPG'])).placements[0].placement,
+    PLACEMENT.alreadyInItsDayFolder,
+  ));
+});
+
+test('a day folder filling up', async (context) => {
+  const firstNinetyEightTaken = ['/card/2026-08-27/P1.JPG', ...Array.from({ length: 98 }, (unused, index) => `/card/2026-08-27/${String(index + 1).padStart(2, '0')}/P1.JPG`)];
+  const plan = buildPlan([shotAt('/card/DCIM/P1.JPG', '2026:08:27 10:00:00')], {}, probeOver(firstNinetyEightTaken));
+  await context.test('the ninety-ninth numbered subfolder is still used', () => assert.equal(plan.placements[0].targetPath, asThisPlatformSpellsIt('/card/2026-08-27/99/P1.JPG')));
+  await context.test('and a file placed there carries no failure', () => assert.equal(plan.placements[0].failureReason, null));
+  await context.test('a failure says what ran out', () => assert.equal(NO_FREE_NAME_IN_THE_DAY_FOLDER, 'no free name in the day folder or its first 99 subfolders'));
+
+  const secondsOwnSubfolderTaken = buildPlan([
+    shotAt('/card/100/P1.JPG', '2026:08:27 10:00:00'), shotAt('/card/101/P1.JPG', '2026:08:27 11:00:00'),
+  ], {}, probeOver(['/card/2026-08-27/02/P1.JPG']));
+  await context.test('a photo whose own numbered subfolder is taken walks past the one another photo claimed, not taking it for a copy', () => assert.deepEqual(
+    [targetOf(secondsOwnSubfolderTaken, '101/P1.JPG'), secondsOwnSubfolderTaken.placements[1].placement],
+    [asThisPlatformSpellsIt('/card/2026-08-27/03/P1.JPG'), PLACEMENT.intoItsDayFolder],
+  ));
+  await context.test('a day folder already holding the same photo makes it a duplicate of that file', () => assert.deepEqual(
+    (({ targetPath, placement }) => [targetPath, placement])(buildPlan([shotAt('/card/DCIM/P1.JPG', '2026:08:27 10:00:00')], {},
+      probeOver(['/card/2026-08-27/P1.JPG'], [['/card/DCIM/P1.JPG', '/card/2026-08-27/P1.JPG']])).placements[0]),
+    [asThisPlatformSpellsIt('/card/2026-08-27/P1.JPG'), PLACEMENT.duplicateOfAFileAlreadySorted],
+  ));
+});
+
+test('counting what a plan does', async (context) => {
+  const counted = countPlacements([PLACEMENT.intoItsDayFolder, PLACEMENT.intoItsDayFolder, PLACEMENT.alreadyInItsDayFolder,
+    PLACEMENT.duplicateOfAFileAlreadySorted, PLACEMENT.couldNotBePlaced].map((placement) => ({ placement })));
+  await context.test('each placement is counted apart, and nothing has failed yet', () => assert.deepEqual(
+    counted,
+    { placed: 2, alreadyInPlace: 1, duplicates: 1, failed: 1, emptyDirectoriesRemoved: 0, failures: [] },
+  ));
+});
