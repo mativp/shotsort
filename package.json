@@ -20,14 +20,16 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node test/unittest.mjs && node test/selftest.mjs && node test/oracle.mjs",
-    "test:unit": "node test/unittest.mjs",
-    "test:end-to-end": "node test/selftest.mjs",
+    "test": "node --test \"test/*/*.test.mjs\"",
+    "test:unit": "node --test \"test/unit/*.test.mjs\"",
+    "test:disk": "node --test \"test/disk/*.test.mjs\"",
+    "test:cli": "node --test \"test/cli/*.test.mjs\"",
+    "test:contract": "node --test \"test/contract/*.test.mjs\"",
     "lint": "eslint .",
-    "coverage": "node --experimental-test-coverage --test test/coverage.mjs",
-    "coverage:check": "node --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=80 --test-coverage-functions=99 --test test/coverage.mjs",
+    "coverage": "node --experimental-test-coverage --test \"test/*/*.test.mjs\"",
+    "coverage:check": "node --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=80 --test-coverage-functions=99 --test \"test/*/*.test.mjs\"",
     "prepublishOnly": "npm run lint && npm test",
-    "test:against-exiftool": "node test/oracle.mjs"
+    "test:against-exiftool": "node --test \"test/oracle/*.test.mjs\""
   },
   "keywords": [
     "photo",

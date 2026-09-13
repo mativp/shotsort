@@ -258,7 +258,7 @@ duplicate rather than a clash, so they collapse into one file.
 
 ## What it reads
 
-**Stills** — JPEG, JPE, JPS, MPO, INSP, TIFF, BTF, PNG, APNG, WEBP, JXL, HSP,
+**Stills** — JPEG, JPE, JPS, MPO, INSP, TIF, TIFF, BTF, PNG, APNG, WEBP, JXL, HSP,
 HIF, HEIC, HEIF, AVIF, and Canon THM sidecars.
 
 **Raw** — RW2, RAW, RWL (Panasonic), CR2, CR3, CRM, CRW (Canon), NEF, NRW
@@ -329,40 +329,59 @@ you named.
 ## Test
 
 ```sh
-npm test                # every suite
-npm run lint            # eslint
-npm run coverage        # every suite under Node's coverage reporter
-npm run coverage:check  # the same, failing below the floors the badges state
+npm test                       # every suite
+npm run test:unit              # one suite: also test:disk, test:cli, test:contract
+npm run test:against-exiftool  # the exiftool oracle alone
+npm run lint                   # eslint
+npm run coverage               # every suite under Node's coverage reporter
+npm run coverage:check         # the same, failing below the floors the badges state
 ```
 
-Three suites, no test framework:
+Five suites, on Node's own test runner and with nothing to install. Each is a
+directory under `test/`, and any file in it ending in `.test.mjs` is run by
+`npm test` without being listed anywhere.
 
-`test/unittest.mjs` runs without a filesystem. Format readers are handed a
-`Buffer` and the planner a stub that answers "does this path exist" and "are
-these the same photo" from a plain object, so a plan can be checked for what it
-decided rather than for the files it left behind.
+`test/unit` runs without a filesystem. Format readers are handed a `Buffer` and
+the planner a stub that answers "does this path exist" and "are these the same
+photo" from a plain object, so a plan can be checked for what it decided rather
+than for the files it left behind.
 
-`test/selftest.mjs` is end to end. It builds a synthetic card dump — raw/JPEG
-pairs, a raw recording no date, a raw dated only by the JPEG it embeds, clips
-either side of midnight, AVCHD outside DCIM, a name collision between card
-folders — runs the real command against it, and checks where every file lands.
-It also checks that `--help`, the man page and this README agree on every
-option, and that the modules which decide things never import `node:fs`.
+`test/disk` puts the modules whose job is the disk to a real one: copies, moves,
+a move onto another disk, a copy that came up short, a file that cannot be
+opened. The one failure asked about is handed in through a wrapped filesystem,
+and everything else is the real thing happening in a real directory.
 
-`test/oracle.mjs` builds every format fixture and puts it to `exiftool`, which
-is the reference implementation for all of these formats, and fails when the two
-read a different date out of the same bytes. This is the only file in the
-repository that knows exiftool exists — shotsort never runs it — and the check
-skips itself when exiftool is not installed. It is here because a parser and the
-fixture that exercises it can share one misunderstanding of a format and agree
-with each other forever; exiftool was written from real files, so putting the
-fixture to it stops that. Three fixtures are recorded as reading differently on
-purpose, each with the reason.
+`test/cli` builds a synthetic card dump — raw/JPEG pairs, a raw recording no
+date, a raw dated only by the JPEG it embeds, clips either side of midnight,
+AVCHD outside DCIM, a name collision between card folders — runs the real
+command against it, and checks where every file lands and what it prints.
+
+`test/contract` reads the repository and runs nothing. It checks every module's
+imports against the parts of the program it may use, so the modules that decide
+things never reach the disk or start a process and the package keeps no
+dependencies; that `--help`, the man page and this README describe every option
+the program declares and state the values its own constants hold; and that every
+format reader has a fixture to read.
+
+`test/oracle` puts every fixture to `exiftool`, which is the reference
+implementation for all of these formats, and fails when the two read a different
+date out of the same bytes. It is the only place in the repository that knows
+exiftool exists — shotsort never runs it — and it is skipped when exiftool is not
+installed. It is here because a parser and the fixture that exercises it can
+share one misunderstanding of a format and agree with each other forever;
+exiftool was written from real files, so putting the fixture to it stops that.
+Three fixtures are recorded as reading differently on purpose, each with the
+reason.
+
+The fixtures are built byte by byte in `test/fixtures`, one module per format,
+and `test/fixtures/catalogue.mjs` records what each one reads as. A fixture added
+to the catalogue is read whole, cut short, corrupted and put to exiftool without
+any suite being touched.
 
 ### What the numbers mean
 
 The figures on the badges are a floor, enforced by `npm run coverage:check` on
-every pull request. The suite reaches well past both — 99.8% of lines and 98.6%
+every pull request. The suite reaches well past both — 99.8% of lines and 98.7%
 of branches as it stands — and the branch floor is set far below that on
 purpose, so that a branch counted differently by a different Node version turns
 CI red only when cover is genuinely lost. They are not a target reached by
@@ -383,9 +402,10 @@ suite runs but never checks counts as covered and survives mutation, which is wh
 this is the figure that says whether the tests assert anything rather than merely
 execute the code. Survivors are treated as real gaps rather than noise. Stryker
 is not a dependency of this package and is not in the manifest; the two configs
-are committed so a run is reproducible. Each module is put to the cheapest suite
-that exercises it — the ones that decide things to the unit suite, the ones whose
-job is the disk to the end to end suite:
+are committed so a run is reproducible. Each module is put to the cheapest suites
+that exercise it — the ones that decide things to the unit suite, the ones whose
+job is the disk to the disk and command line suites — and a run stops at the
+first test that fails, one failure being enough to settle a mutant:
 
 ```sh
 npm install --no-save @stryker-mutator/core
