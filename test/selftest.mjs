@@ -25,6 +25,7 @@ import { destinationProbeOverTheFilesystem } from '../src/destination.mjs';
 import { FILESYSTEM_DATE_USE } from '../src/dating.mjs';
 import { DATE_SOURCE } from '../src/dateSource.mjs';
 import { USAGE_IN_BRIEF, USAGE_IN_FULL } from '../cli/usage.mjs';
+import { OPTIONS } from '../cli/options.mjs';
 
 // The parsers answer with a camera clock record now; these checks still read as the
 // stamp a camera would have written, so they go on comparing the text of one.
@@ -1549,10 +1550,7 @@ function theModulesThatMustNotTouchTheDisk() {
 }
 
 function theDocumentationSaysTheSameAsTheProgram() {
-  const programSource = fs.readFileSync(path.join(testDirectory, '..', 'cli', 'options.mjs'), 'utf8');
-  const longOptions = [...programSource.matchAll(/optionName === '(--[a-z-]+)'/g)].map(([, option]) => option);
-  const shortOptions = [...programSource.matchAll(/letter === '([a-zA-Z0-9])'/g)].map(([, letter]) => `-${letter}`);
-  const everyOption = [...new Set([...longOptions, ...shortOptions])];
+  const everyOption = OPTIONS.flatMap((option) => [option.short, option.long]).filter((name) => name !== undefined);
 
   const projectRoot = path.join(testDirectory, '..');
   const manualPageAsPlainText = fs.readFileSync(path.join(projectRoot, 'man', 'shotsort.1'), 'utf8')
