@@ -398,7 +398,7 @@ reads over every format in the catalogue, and they are what the branch figure is
 made of.
 
 The mutation score is measured by hand rather than in CI, because a full run
-takes hours where the suite takes seconds. It is the sharper number: it changes the
+takes minutes where the suite takes seconds. It is the sharper number: it changes the
 program in one small way at a time — a `<` for a `<=`, a constant for another, a
 condition for `true` — and reports every change no check noticed. A line the
 suite runs but never checks counts as covered and survives mutation, which is why
@@ -408,8 +408,9 @@ is not a dependency of this package and is not in the manifest; the two configs
 are committed so a run is reproducible. Each module is put to the cheapest suites
 that exercise it — the ones that decide things to the unit suite and the one read
 that opens a file, the ones whose job is the disk to the disk and command line
-suites — and a run stops at the
-first test that fails, one failure being enough to settle a mutant:
+suites. A run leaves out every test file that does not import the mutated module
+and stops at the first test that fails, one failure being enough to settle a
+mutant:
 
 ```sh
 npm install --no-save @stryker-mutator/core

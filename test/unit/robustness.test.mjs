@@ -71,10 +71,12 @@ test('the files carrying more than a walk looks through', async (context) => {
 // half-written file is read as less than the whole and never as a different shot.
 const LONGEST_FIXTURE_CUT_AT_EVERY_BYTE = 16 * 1024;
 
-// One fixture carries more segments than any photo does, purely to prove the walk stops;
-// cutting it at every byte re-walks all of them and buys nothing, so it is stepped through
-// on a prime stride, which no structure in it is aligned to.
-const BYTES_STEPPED_OVER_IN_A_LONGER_FIXTURE = 13;
+// One fixture carries more segments than any photo does, purely to prove the walk stops.
+// Its middle is one segment written over and over, and cutting there re-walks thousands of
+// them to learn nothing new, so it is cut only where its layout changes: at its start, and
+// from a little before the walk's ceiling to its end.
+const BYTES_CUT_AT_THE_START_OF_A_LONGER_FIXTURE = 64;
+const BYTES_CUT_AT_THE_END_OF_A_LONGER_FIXTURE = 256;
 
 const toTheMinute = (moment) => moment.slice(0, 'YYYY-MM-DD HH:MM'.length);
 
@@ -82,11 +84,14 @@ const momentsACutOfItMayStillRead = ({ readAs }) => new Set(
   [readAs, A_CLOCK_THE_READER_MUST_PASS_OVER].filter((moment) => moment !== null).map(toTheMinute),
 );
 
+const positionsFrom = (first, howMany) => Array.from({ length: howMany }, (notUsed, offset) => first + offset);
+
 function everyCutOf(bytes) {
-  const step = bytes.length > LONGEST_FIXTURE_CUT_AT_EVERY_BYTE ? BYTES_STEPPED_OVER_IN_A_LONGER_FIXTURE : 1;
-  const cuts = [];
-  for (let cut = 0; cut <= bytes.length; cut += step) cuts.push(cut);
-  return cuts;
+  if (bytes.length <= LONGEST_FIXTURE_CUT_AT_EVERY_BYTE) return positionsFrom(0, bytes.length + 1);
+  return [
+    ...positionsFrom(0, BYTES_CUT_AT_THE_START_OF_A_LONGER_FIXTURE),
+    ...positionsFrom(bytes.length - BYTES_CUT_AT_THE_END_OF_A_LONGER_FIXTURE, BYTES_CUT_AT_THE_END_OF_A_LONGER_FIXTURE + 1),
+  ];
 }
 
 test('a file that stops half way is read as less than the whole', async (context) => {
