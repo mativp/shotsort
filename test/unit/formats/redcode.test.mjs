@@ -5,6 +5,8 @@ import {
   redcodeRunOfDigits, redcodeTimecodeRecord, redcodeWhenItWasShotRecord,
 } from '../../fixtures/redcode.mjs';
 import { clockTextInside } from '../../support/inMemory.mjs';
+import { byteSourceForBuffer } from '../../../src/bytes.mjs';
+import { readCameraClockFromRedcode } from '../../../src/formats/redcode.mjs';
 
 const SHOT = '2026-08-27 11:30:00';
 const THE_DECOY_SAYS = '2026-01-01 00:00:00';
@@ -100,6 +102,14 @@ test('the records a Redcode directory is walked through', async (context) => {
     readFrom([redcodeTimecodeRecord(), ...redcodeFillerRecords(MOST_RECORDS_WALKED - 1), redcodeWhenItWasShotRecord(SHOT)], untrustworthy),
     null,
   ));
+  // The record claims twelve of the fourteen digits; the next record's length field, read as
+  // text, would supply the last two.
+  const aDateRecordShorterThanItsDigits = redcodeRecord(0x1005, Buffer.from(redcodeRunOfDigits(SHOT).slice(0, 12), 'latin1'));
+  const aRecordWhoseLengthReadsAsTwoDigits = Buffer.concat([Buffer.from('00', 'latin1'), Buffer.from([0x10, 0x19]), Buffer.alloc(8)]);
+  await context.test('a date record is read only as far as its own length, not into the record after it', () => assert.equal(
+    readFrom([redcodeTimecodeRecord(), aDateRecordShorterThanItsDigits, aRecordWhoseLengthReadsAsTwoDigits], untrustworthy),
+    null,
+  ));
   await context.test('an empty record before the date is stepped over', () => assert.equal(
     readFrom([redcodeTimecodeRecord(), redcodeRecord(0x1019, Buffer.alloc(0)), redcodeWhenItWasShotRecord(SHOT)], untrustworthy),
     SHOT,
@@ -116,4 +126,25 @@ test('the records a Redcode directory is walked through', async (context) => {
   ]);
   await context.test('a record claiming less than its own header is refused, though stepping over it would lead to the date',
     () => assert.equal(readFrom([redcodeTimecodeRecord(), claimingLessThanItsHeader], untrustworthy), null));
+});
+
+test('the last record a Redcode directory holds', async (context) => {
+  const BYTES_IN_A_RECORD_HEADER = 4;
+  const holdingNothingButItsHeader = redcodeRecord(0x1019, Buffer.alloc(0));
+  const clip = redcodeClipHolding([
+    redcodeTimecodeRecord(), redcodeRecord(0x1019, Buffer.alloc(300 - 15 - BYTES_IN_A_RECORD_HEADER - BYTES_IN_A_RECORD_HEADER)), holdingNothingButItsHeader,
+  ], { padToALengthWorthTrusting: false });
+  const inMemory = byteSourceForBuffer(clip);
+  const positionsRead = [];
+  readCameraClockFromRedcode({
+    sizeInBytes: inMemory.sizeInBytes,
+    readInto: (into, position, byteCount) => {
+      positionsRead.push(position);
+      return inMemory.readInto(into, position, byteCount);
+    },
+  });
+  await context.test('is looked at even when its header takes up all the room left', () => assert.ok(
+    positionsRead.includes(clip.length - BYTES_IN_A_RECORD_HEADER),
+    JSON.stringify(positionsRead),
+  ));
 });

@@ -6,6 +6,7 @@ import { DATE_SOURCE } from '../src/dateSource.mjs';
 import { PLACEMENT, UNDATED_FOLDER_NAME } from '../src/plan.mjs';
 import { PROGRAM_NAME } from './usage.mjs';
 
+const BROKEN_PIPE_ERROR_CODE = 'EPIPE';
 const BYTE_SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
 const BYTES_PER_UNIT_STEP = 1024;
 const FILE_COUNT_COLUMN_WIDTH = 5;
@@ -32,7 +33,7 @@ function summariseByFolder(placements) {
     if (entry.dateSource === DATE_SOURCE.fileTimestamp) summary.filesDatedByFilesystemTime++;
     summaryOfEachFolder.set(entry.folderName, summary);
   }
-  return [...summaryOfEachFolder].sort(([firstName], [secondName]) => (firstName < secondName ? -1 : 1));
+  return [...summaryOfEachFolder.keys()].sort().map((folderName) => [folderName, summaryOfEachFolder.get(folderName)]);
 }
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -145,4 +146,13 @@ export function reportAsJson({ plan, outcome, fileCount, options }, { out }) {
       namesSplitIntoSubfolders: plan.namesSplitIntoSubfolders,
     },
   }, null, 2));
+}
+
+// Nobody is reading any more, so there is nothing left to flush and nothing to wait for:
+// this is the one place stopping on the spot is the right thing to do. The error arrives
+// once the run is over, so the exit code it set still stands.
+export function stopOnceNobodyIsReading(output, exit) {
+  output.on('error', (streamError) => {
+    if (streamError.code === BROKEN_PIPE_ERROR_CODE) exit();
+  });
 }

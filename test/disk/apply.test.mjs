@@ -44,7 +44,7 @@ test('a move onto another disk', async (context) => {
   // rename is what fails when the destination is on another disk, and the only thing that
   // does: the copy and the delete that stand in for it are the real ones.
   const outcome = applyPlan([anEntryFor(source, target, PLACEMENT.intoItsDayFolder)], {
-    moveInsteadOfCopying: true,
+    moveInsteadOfCopying: true, directoriesToTidy: [],
     filesystem: aFilesystemThat({ renameSync: throwing('EXDEV') }),
   });
 
@@ -69,7 +69,7 @@ test('a copy onto another disk that came up short', async (context) => {
   // The copy lands, but the card is pulled before it is whole: the file at the far end is
   // shorter than the one it came from, and the original must survive that.
   const outcome = applyPlan([anEntryFor(source, target, PLACEMENT.intoItsDayFolder)], {
-    moveInsteadOfCopying: true,
+    moveInsteadOfCopying: true, directoriesToTidy: [],
     filesystem: aFilesystemThat({
       renameSync: throwing('EXDEV'),
       statSync: (askedAbout, ...rest) => (askedAbout === target
@@ -97,7 +97,7 @@ test('a target that appeared after the plan was made', async (context) => {
   const target = path.join(disk, '2026-08-27', 'P1.JPG');
   const somethingElseThere = fs.readFileSync(target);
 
-  const outcome = applyPlan([anEntryFor(source, target, PLACEMENT.intoItsDayFolder)], { moveInsteadOfCopying: true });
+  const outcome = applyPlan([anEntryFor(source, target, PLACEMENT.intoItsDayFolder)], { moveInsteadOfCopying: true, directoriesToTidy: [] });
 
   await context.test('a move onto a name that filled up after the plan was made is refused',
     () => assert.ok(outcome.failed === 1 && outcome.failures[0].reason === 'EEXIST', JSON.stringify(outcome)));
@@ -111,7 +111,7 @@ test('a rename that failed for some other reason', async (context) => {
 
   const outcome = applyPlan(
     [anEntryFor(source, path.join(disk, '2026-08-27', 'P1.JPG'), PLACEMENT.intoItsDayFolder)],
-    { moveInsteadOfCopying: true, filesystem: aFilesystemThat({ renameSync: throwing('EACCES') }) },
+    { moveInsteadOfCopying: true, directoriesToTidy: [], filesystem: aFilesystemThat({ renameSync: throwing('EACCES') }) },
   );
 
   await context.test('a rename refused for any reason but a disk boundary is reported, not copied around',
@@ -141,7 +141,7 @@ test('what is counted without anything being written', async (context) => {
       PLACEMENT.alreadyInItsDayFolder),
     anEntryFor(path.join(disk, 'DCIM', 'P2.JPG'), path.join(disk, '2026-08-27', 'P2.JPG'),
       PLACEMENT.duplicateOfAFileAlreadySorted),
-  ], { moveInsteadOfCopying: true, onFilePlaced: (entry) => named.push(path.basename(entry.sourcePath)) });
+  ], { moveInsteadOfCopying: true, directoriesToTidy: [], onFilePlaced: (entry) => named.push(path.basename(entry.sourcePath)) });
 
   await context.test('a photo the plan found nowhere for is counted as failed, with the reason the plan gave', () => assert.ok(
     outcome.failed === 1 && outcome.failures[0].reason === NO_FREE_NAME_IN_THE_DAY_FOLDER,
@@ -236,7 +236,7 @@ test('a big clip is copied in chunks saying how far it has got', async (context)
   const acrossDisks = aDiskHoldingAClipOf('clip-across-disks', BYTES_IN_THE_SMALLEST_FILE_COPIED_IN_CHUNKS);
   const reportsAcrossDisks = [];
   const moved = applyPlan([anEntryFor(acrossDisks.source, acrossDisks.target, PLACEMENT.intoItsDayFolder)], {
-    moveInsteadOfCopying: true,
+    moveInsteadOfCopying: true, directoriesToTidy: [],
     onBytesWritten: (_entryBeingWritten, bytesWritten) => reportsAcrossDisks.push(bytesWritten),
     filesystem: aFilesystemThat({ renameSync: throwing('EXDEV') }),
   });

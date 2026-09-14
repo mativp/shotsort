@@ -81,3 +81,15 @@ test('what each option sets', async (context) => {
   await context.test('an argument that is not text is a mistake in the program, not a refusal to report',
     () => assert.throws(() => decideWhatToDo([null]), TypeError));
 });
+
+test('the words the decisions are spelled with', async (context) => {
+  await context.test('each thing the command line can decide to do is named by its own words', () => assert.deepEqual(
+    [[], ['--help'], ['--version'], ['--no-such-option'], ['/card']].map((commandLine) => decideWhatToDo(commandLine).whatToDo),
+    ['print the usage in brief', 'print the usage in full', 'print version', 'refuse', 'sort'],
+  ));
+  await context.test('and so is each way the filesystem date may be used', () => assert.deepEqual(
+    [[], ['--use-filesystem-date'], ['--ignore-filesystem-date']]
+      .map((commandLine) => decideWhatToDo([...commandLine, '/card']).options.filesystemDateUse),
+    ['when-plausible', 'always', 'never'],
+  ));
+});

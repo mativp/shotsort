@@ -102,6 +102,12 @@ test('the clock a file takes from another file of the same shot', async (context
     clockOfTheRawIn([dated('/card/B/P1.JPG', '2026:08:27 10:00:00'), dated('/card/C/P1.JPG', '2026:08:27 11:00:00'), candidate('/card/A/P1.RW2')]),
     null,
   ));
+  // Lower-casing and upper-casing disagree on a few letters: ß stays ß lowered but becomes SS
+  // raised, so straße and STRASSE only match when both are raised.
+  await context.test('names are matched by folding them to lower case, so straße is not STRASSE', () => assert.equal(
+    clockOfTheRawIn([dated('/card/DCIM/STRASSE.JPG', '2026:08:27 10:00:00'), candidate('/card/DCIM/straße.RW2')]),
+    null,
+  ));
   await context.test('a jpeg in the raw\'s own folder is trusted however many moments its name was used at elsewhere', () => assert.equal(
     clockOfTheRawIn([dated('/card/A/P1.JPG', '2026:08:27 10:00:00'), dated('/card/C/P1.JPG', '2026:08:27 11:00:00'), candidate('/card/A/P1.RW2')]),
     '2026-08-27 10:00:00',

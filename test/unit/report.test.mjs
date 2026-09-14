@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { PLACEMENT, countPlacements } from '../../src/plan.mjs';
 import { DATE_SOURCE } from '../../src/dateSource.mjs';
-import { fileAsItIsPlaced, formatByteSize, reportAsJson, reportForATerminal } from '../../cli/report.mjs';
+import {
+  fileAsItIsPlaced, formatByteSize, reportAsJson, reportForATerminal, stopOnceNobodyIsReading,
+} from '../../cli/report.mjs';
 import { cameraClockFrom } from '../../src/clock.mjs';
 
 // The report is handed the lines it would print rather than a terminal, so what a run says
@@ -188,4 +191,16 @@ test('the json stamp of a file with a clock', async (context) => {
     JSON.parse(linesPrintedBy(reportAsJson, { plan: planOf([withAClock]), outcome, fileCount: 1, options: { dryRun: false } }).printed.join('\n')).actions[0].stamp,
     '2026-08-27 10:30:00',
   ));
+});
+
+test('output nobody is reading any more', async (context) => {
+  const timesStoppedAfter = (errorCode) => {
+    const output = new EventEmitter();
+    let timesStopped = 0;
+    stopOnceNobodyIsReading(output, () => { timesStopped += 1; });
+    output.emit('error', Object.assign(new Error('the write failed'), { code: errorCode }));
+    return timesStopped;
+  };
+  await context.test('a broken pipe stops the run on the spot', () => assert.equal(timesStoppedAfter('EPIPE'), 1));
+  await context.test('while any other error writing the output does not', () => assert.equal(timesStoppedAfter('EIO'), 0));
 });

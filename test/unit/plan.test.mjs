@@ -134,10 +134,27 @@ test('the order two same-named photos of a day are numbered in', async (context)
     targetOf(buildPlan([shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00'), shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00')], {}, probeOver([])), '100/A1.JPG'),
     asThisPlatformSpellsIt('/card/2026-09-01/01/A1.JPG'),
   ));
+  await context.test('names are compared folded to lower case, so straße and STRASSE are two names, not one to split', () => assert.equal(
+    buildPlan([shotAt('/card/100/STRASSE.JPG', '2026:09:01 10:00:00'), shotAt('/card/101/straße.JPG', '2026:09:01 11:00:00')], {}, probeOver([]))
+      .namesSplitIntoSubfolders,
+    0,
+  ));
   await context.test('two files of different sizes are never the same photo, whatever the probe says of their contents', () => assert.equal(
     buildPlan([shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00', 1000), shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00', 2000)],
       {}, probeOver([], [['/card/100/A1.JPG', '/card/101/A1.JPG']])).namesSplitIntoSubfolders,
     1,
+  ));
+});
+
+test('two candidates at one path', async (context) => {
+  // A scan never finds one path twice, but the planner is still handed whatever it is given,
+  // and it has to keep an order for them rather than make one up.
+  const first = candidate('/card/DCIM/P1.JPG', { clock: exif('2026:09:01 10:00:00'), fileTimestamp: new Date(2026, 8, 1, 10) });
+  const second = candidate('/card/DCIM/P1.JPG', { clock: exif('2026:09:01 10:00:00'), fileTimestamp: new Date(2026, 8, 1, 11) });
+  await context.test('taken at one moment and of one size, they are planned in the order they were given', () => assert.deepEqual(
+    [buildPlan([first, second], {}, probeOver([])), buildPlan([second, first], {}, probeOver([]))]
+      .map((plan) => plan.placements[0].fileTimestamp.getHours()),
+    [10, 11],
   ));
 });
 

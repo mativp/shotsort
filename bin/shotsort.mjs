@@ -7,15 +7,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WHAT_TO_DO, decideWhatToDo } from '../cli/options.mjs';
 import { whileShowingProgress } from '../cli/progress.mjs';
-import { fileAsItIsPlaced, reportAsJson, reportForATerminal } from '../cli/report.mjs';
+import {
+  fileAsItIsPlaced, reportAsJson, reportForATerminal, stopOnceNobodyIsReading,
+} from '../cli/report.mjs';
 import { EXIT_CODE, PROGRAM_NAME, USAGE_IN_BRIEF, USAGE_IN_FULL } from '../cli/usage.mjs';
 import { applyPlan } from '../src/apply.mjs';
 import { readTheClockInsideEachFile } from '../src/dating.mjs';
 import { destinationProbeOverTheFilesystem } from '../src/destination.mjs';
 import { buildPlan, countPlacements } from '../src/plan.mjs';
 import { findMediaFiles } from '../src/scan.mjs';
-
-const BROKEN_PIPE_ERROR_CODE = 'EPIPE';
 
 const out = (line) => console.log(line);
 const error = (line) => console.error(line);
@@ -82,12 +82,7 @@ function sort(options) {
 // than the buffer that stream holds, so exiting on the spot loses the end of it to
 // anything that captures the output rather than showing it.
 function main() {
-  process.stdout.on('error', (streamError) => {
-    // Nobody is reading any more, so there is nothing left to flush and nothing to wait
-    // for: this is the one place stopping on the spot is the right thing to do. The error
-    // arrives once the run is over, so the exit code it set still stands.
-    if (streamError.code === BROKEN_PIPE_ERROR_CODE) process.exit();
-  });
+  stopOnceNobodyIsReading(process.stdout, process.exit);
 
   const decision = decideWhatToDo(process.argv.slice(2));
 
