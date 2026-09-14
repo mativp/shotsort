@@ -119,19 +119,19 @@ test('two files alike in every way but their path', async (context) => {
 });
 
 const shotAt = (filePath, exifText, sizeInBytes = 1000) => candidate(filePath, { clock: exif(exifText), sizeInBytes });
-const targetOf = (plan, sourceEnd) => plan.placements.find((entry) => entry.sourcePath.endsWith(sourceEnd)).targetPath;
+const targetOf = (plan, sourcePath) => plan.placements.find((entry) => entry.sourcePath === asThisPlatformSpellsIt(sourcePath)).targetPath;
 
 test('the order two same-named photos of a day are numbered in', async (context) => {
   await context.test('the earlier one takes the first subfolder, however large it is and wherever it sits', () => assert.equal(
-    targetOf(buildPlan([shotAt('/card/100/A1.JPG', '2026:09:01 18:00:00', 1000), shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00', 9000)], {}, probeOver([])), '101/A1.JPG'),
+    targetOf(buildPlan([shotAt('/card/100/A1.JPG', '2026:09:01 18:00:00', 1000), shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00', 9000)], {}, probeOver([])), '/card/101/A1.JPG'),
     asThisPlatformSpellsIt('/card/2026-09-01/01/A1.JPG'),
   ));
   await context.test('of two taken at one moment, the smaller does', () => assert.equal(
-    targetOf(buildPlan([shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00', 9000), shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00', 1000)], {}, probeOver([])), '101/A1.JPG'),
+    targetOf(buildPlan([shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00', 9000), shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00', 1000)], {}, probeOver([])), '/card/101/A1.JPG'),
     asThisPlatformSpellsIt('/card/2026-09-01/01/A1.JPG'),
   ));
   await context.test('and of two the same size too, the one whose path sorts first', () => assert.equal(
-    targetOf(buildPlan([shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00'), shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00')], {}, probeOver([])), '100/A1.JPG'),
+    targetOf(buildPlan([shotAt('/card/101/A1.JPG', '2026:09:01 10:00:00'), shotAt('/card/100/A1.JPG', '2026:09:01 10:00:00')], {}, probeOver([])), '/card/100/A1.JPG'),
     asThisPlatformSpellsIt('/card/2026-09-01/01/A1.JPG'),
   ));
   await context.test('names are compared folded to lower case, so straße and STRASSE are two names, not one to split', () => assert.equal(
@@ -195,7 +195,7 @@ test('a day folder filling up', async (context) => {
     shotAt('/card/100/P1.JPG', '2026:08:27 10:00:00'), shotAt('/card/101/P1.JPG', '2026:08:27 11:00:00'),
   ], {}, probeOver(['/card/2026-08-27/02/P1.JPG']));
   await context.test('a photo whose own numbered subfolder is taken walks past the one another photo claimed, not taking it for a copy', () => assert.deepEqual(
-    [targetOf(secondsOwnSubfolderTaken, '101/P1.JPG'), secondsOwnSubfolderTaken.placements[1].placement],
+    [targetOf(secondsOwnSubfolderTaken, '/card/101/P1.JPG'), secondsOwnSubfolderTaken.placements[1].placement],
     [asThisPlatformSpellsIt('/card/2026-08-27/03/P1.JPG'), PLACEMENT.intoItsDayFolder],
   ));
   await context.test('a day folder already holding the same photo makes it a duplicate of that file', () => assert.deepEqual(

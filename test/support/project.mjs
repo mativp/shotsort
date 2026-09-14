@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 export const projectRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-export const readProjectFile = (relativePath) => fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
+// A Windows checkout ends every line in CRLF, and the checks read a line as ending in LF.
+export const readProjectFile = (relativePath) =>
+  fs.readFileSync(path.join(projectRoot, relativePath), 'utf8').replace(/\r\n/g, '\n');
 
 export function projectFilesUnder(topLevelDirectory) {
   const walk = (directory) => fs.readdirSync(path.join(projectRoot, directory), { withFileTypes: true })

@@ -27,8 +27,8 @@
     "test:contract": "node --test \"test/contract/**/*.test.mjs\"",
     "test:oracle": "node --test \"test/oracle/**/*.test.mjs\"",
     "lint": "eslint .",
-    "coverage": "node --experimental-test-coverage --test \"test/**/*.test.mjs\"",
-    "coverage:check": "node --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=80 --test-coverage-functions=99 --test \"test/**/*.test.mjs\"",
+    "coverage": "node --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test \"test/**/*.test.mjs\"",
+    "coverage:check": "node --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=80 --test-coverage-functions=99 --test-coverage-exclude=\"test/**\" --test \"test/**/*.test.mjs\"",
     "prepublishOnly": "npm run lint && npm test"
   },
   "keywords": [

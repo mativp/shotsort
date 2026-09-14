@@ -384,8 +384,8 @@ any suite being touched.
 ### What the numbers mean
 
 The figures on the badges are a floor, enforced by `npm run coverage:check` on
-every pull request. The suite reaches well past both — 99.8% of lines and 98.7%
-of branches as it stands — and the branch floor is set far below that on
+every pull request. The suite reaches well past both — 99.9% of lines and 99.6%
+of branches of the program as it stands — and the branch floor is set far below that on
 purpose, so that a branch counted differently by a different Node version turns
 CI red only when cover is genuinely lost. They are not a target reached by
 counting lines: most of the branches in a format reader are the ones that fire on a file
