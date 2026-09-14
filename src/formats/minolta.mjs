@@ -15,15 +15,16 @@ export const startsWithAMinoltaRawMark = (byteSource) =>
   MINOLTA_RAW_MARKS.includes(readTextAt(byteSource, 0, BYTES_IN_A_MINOLTA_RAW_MARK));
 
 export function readCameraClockFromMinoltaRaw(byteSource) {
+  if (!startsWithAMinoltaRawMark(byteSource)) return null;
   let blockStart = BYTES_IN_A_MINOLTA_BLOCK_HEADER;
-  while (blockStart + BYTES_IN_A_MINOLTA_BLOCK_HEADER <= byteSource.sizeInBytes) {
+  for (;;) {
     const blockType = readTextAt(byteSource, blockStart, BYTES_IN_A_MINOLTA_BLOCK_TYPE);
     const blockLength = readUInt32At(byteSource, blockStart + BYTES_IN_A_MINOLTA_BLOCK_TYPE, false);
-    if (blockType === null || blockLength === null || blockLength <= 0) return null;
+    const aBlockHeaderWasThereClaimingSomeLength = blockLength > 0;
+    if (!aBlockHeaderWasThereClaimingSomeLength) return null;
 
     const contentStart = blockStart + BYTES_IN_A_MINOLTA_BLOCK_HEADER;
     if (blockType === MINOLTA_BLOCK_HOLDING_A_TIFF) return readCameraClockFromTiff(byteSource, contentStart);
     blockStart = contentStart + blockLength;
   }
-  return null;
 }

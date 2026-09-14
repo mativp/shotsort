@@ -1,0 +1,28 @@
+import {
+  EXIF_HEADER, TIFF_STANDARD_SIGNATURE, TIFF_TAG_MODIFY_DATE, tiffFile, tiffFileWithTheDateInItsMainDirectory,
+} from './tiff.mjs';
+import { isoBox } from './isoBaseMedia.mjs';
+
+const JPEG_XL_CONTAINER_SIGNATURE = Buffer.from('0000000c4a584c200d0a870a', 'hex');
+export const BYTES_IN_THE_JPEG_XL_SIGNATURE_BOX = JPEG_XL_CONTAINER_SIGNATURE.length;
+const BYTES_IN_A_JPEG_XL_EXIF_PREAMBLE = 4;
+
+export function jpegXlStill(dateTimeOriginal) {
+  const exifPayload = Buffer.concat([
+    Buffer.alloc(BYTES_IN_A_JPEG_XL_EXIF_PREAMBLE),
+    tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal }),
+  ]);
+  return Buffer.concat([
+    JPEG_XL_CONTAINER_SIGNATURE,
+    isoBox('ftyp', Buffer.from('jxl jxl ', 'latin1')),
+    isoBox('Exif', exifPayload),
+    isoBox('jxlc', Buffer.alloc(32)),
+  ]);
+}
+
+export const jpegXlStillWhoseShortExifBoxEndsTheFile = (modifyDate) => Buffer.concat([
+  JPEG_XL_CONTAINER_SIGNATURE,
+  isoBox('ftyp', Buffer.from('jxl jxl ', 'latin1')),
+  isoBox('jxlc', Buffer.alloc(32)),
+  isoBox('Exif', Buffer.concat([Buffer.from(EXIF_HEADER, 'latin1'), tiffFileWithTheDateInItsMainDirectory(TIFF_TAG_MODIFY_DATE, modifyDate)])),
+]);

@@ -60,7 +60,7 @@ export function compareCameraClocks(firstClock, secondClock) {
   if (secondClock === null) return -1;
   const fields = ['year', 'month', 'day', 'hour', 'minute', 'second'];
   for (const field of fields) {
-    if (firstClock[field] !== secondClock[field]) return firstClock[field] < secondClock[field] ? -1 : 1;
+    if (firstClock[field] !== secondClock[field]) return Math.sign(firstClock[field] - secondClock[field]);
   }
   return 0;
 }
@@ -77,11 +77,9 @@ export const cameraClockFromDate = (date) =>
   cameraClock(date.getFullYear(), date.getMonth() + 1, date.getDate(),
     date.getHours(), date.getMinutes(), date.getSeconds());
 
-const monthNumberFor = (monthName) => MONTH_NAMES.indexOf(monthName.slice(0, 3).toLowerCase()) + 1;
+const monthNumberFor = (monthName) => MONTH_NAMES.indexOf(monthName.toLowerCase()) + 1;
 
 export function cameraClockFromDateWrittenOut(text) {
-  if (text === null) return null;
-
   const yearLast = DATE_WITH_THE_YEAR_LAST.exec(text);
   if (yearLast !== null && monthNumberFor(yearLast[1]) > 0) {
     return cameraClock(Number(yearLast[6]), monthNumberFor(yearLast[1]), Number(yearLast[2]),
@@ -127,13 +125,11 @@ const clockFromMatch = (parts) => (parts === null
   : cameraClock(Number(parts[1]), Number(parts[2]), Number(parts[3]),
     Number(parts[4]), Number(parts[5]), Number(parts[6])));
 
-export const cameraClockFromExifText = (text) =>
-  (text === null ? null : clockFromMatch(EXIF_DATE_TIME_PATTERN.exec(text)));
+export const cameraClockFromExifText = (text) => clockFromMatch(EXIF_DATE_TIME_PATTERN.exec(text));
 
 // A movie stamped in UTC is not the camera's clock, so it is refused here and the
 // reader falls through to something that does spell the camera's own time out.
 export function cameraClockFromIso8601(text) {
-  if (text === null) return null;
   if (A_TIME_STAMPED_IN_UTC_RATHER_THAN_THE_CAMERA_S_OWN_CLOCK.test(text)) return null;
   return clockFromMatch(ISO_8601_DATE_TIME_PATTERN.exec(text));
 }
@@ -147,11 +143,8 @@ export const LATEST_HOUR_A_DAY_MAY_START_AT = 23;
 const ESCAPES_THAT_NAME_A_DAY = ['Y', 'm', 'd', 'F'];
 const LAYOUT_NAMES_A_DAY = new RegExp(`%[${ESCAPES_THAT_NAME_A_DAY.join('')}]`);
 
-const inPlainEnglish = (items) =>
-  [items.slice(0, -1).join(', '), items[items.length - 1]].filter((part) => part !== '').join(' or ');
-
-export const LAYOUT_MUST_BE = `a relative folder name using ${
-  inPlainEnglish(ESCAPES_THAT_NAME_A_DAY.map((escape) => `%${escape}`))}`;
+const ESCAPES_AS_WRITTEN = ESCAPES_THAT_NAME_A_DAY.map((escape) => `%${escape}`);
+export const LAYOUT_MUST_BE = `a relative folder name using ${ESCAPES_AS_WRITTEN.slice(0, -1).join(', ')} or ${ESCAPES_AS_WRITTEN.at(-1)}`;
 
 export const layoutIsUsable = (layout) => !path.isAbsolute(layout)
   && !layout.split(/[\\/]/).includes('..')

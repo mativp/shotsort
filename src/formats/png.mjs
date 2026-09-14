@@ -15,7 +15,7 @@ const BYTES_IN_A_PNG_CHUNK_CHECKSUM = 4;
 const EXIF_CHUNK_TYPE = 'eXIf';
 const LAST_WRITTEN_CHUNK_TYPE = 'tIME';
 const BYTES_IN_A_LAST_WRITTEN_CHUNK = 7;
-const TEXT_CHUNK_TYPES = ['tEXt', 'iTXt', 'zTXt'];
+const TEXT_CHUNK_TYPES = ['tEXt', 'iTXt'];
 const IMAGE_DATA_CHUNK_TYPE = 'IDAT';
 const CREATION_TIME_KEYWORD = 'Creation Time';
 const LONGEST_TEXT_CHUNK_WORTH_READING = 256;
@@ -57,17 +57,16 @@ export function readCameraClockFromPng(byteSource) {
   for (let chunkIndex = 0; chunkIndex < MOST_CHUNKS_BEFORE_THE_IMAGE_DATA; chunkIndex++) {
     const contentLength = readUInt32At(byteSource, chunkStart, false);
     const chunkType = readTextAt(byteSource, chunkStart + BYTES_IN_A_PNG_CHUNK_LENGTH_FIELD, BYTES_IN_A_PNG_CHUNK_TYPE);
-    if (contentLength === null || chunkType === null) return whateverWasFound();
     if (chunkType === IMAGE_DATA_CHUNK_TYPE) return whateverWasFound();
 
     const contentStart = chunkStart + BYTES_IN_A_PNG_CHUNK_LENGTH_FIELD + BYTES_IN_A_PNG_CHUNK_TYPE;
     if (chunkType === EXIF_CHUNK_TYPE) {
       const clock = readCameraClockFromTiff(byteSource, contentStart);
       if (clock !== null) return clock;
-    } else if (creationTime === null && TEXT_CHUNK_TYPES.includes(chunkType)) {
-      creationTime = creationTimeInTextChunk(byteSource, contentStart, contentStart + contentLength);
-    } else if (lastWritten === null && chunkType === LAST_WRITTEN_CHUNK_TYPE) {
-      lastWritten = lastWrittenTimeInChunk(byteSource, contentStart);
+    } else if (TEXT_CHUNK_TYPES.includes(chunkType)) {
+      creationTime ??= creationTimeInTextChunk(byteSource, contentStart, contentStart + contentLength);
+    } else if (chunkType === LAST_WRITTEN_CHUNK_TYPE) {
+      lastWritten ??= lastWrittenTimeInChunk(byteSource, contentStart);
     }
     chunkStart = contentStart + contentLength + BYTES_IN_A_PNG_CHUNK_CHECKSUM;
   }

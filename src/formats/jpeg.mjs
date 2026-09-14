@@ -11,7 +11,6 @@ const JPEG_MARKER_END_OF_IMAGE = 0xd9;
 const JPEG_MARKERS_WITH_NO_LENGTH_FIELD = new Set([0x01, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8]);
 const BYTES_IN_JPEG_MARKER = 2;
 const BYTES_IN_JPEG_SEGMENT_LENGTH_FIELD = 2;
-const SHORTEST_VALID_JPEG_SEGMENT_LENGTH = 2;
 // A colour-managed JPEG carries its ICC profile in as many APP2 segments as it takes, and
 // a phone adds APP4 depth maps on top, so a low ceiling here is a photo left undated for
 // being too well described. The ceiling is only here to stop a walk over bytes that are
@@ -41,7 +40,6 @@ export function readCameraClockFromJpeg(byteSource, jpegStart = 0) {
     }
 
     const segmentLength = readUInt16At(byteSource, segmentStart + BYTES_IN_JPEG_MARKER, false);
-    if (segmentLength === null || segmentLength < SHORTEST_VALID_JPEG_SEGMENT_LENGTH) return null;
 
     const isExifSegment = marker === JPEG_MARKER_APP1
       && readTextAt(byteSource, segmentStart + BYTES_FROM_SEGMENT_START_TO_EXIF_HEADER, EXIF_HEADER.length) === EXIF_HEADER;

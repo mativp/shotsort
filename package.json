@@ -20,14 +20,17 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node test/unittest.mjs && node test/selftest.mjs && node test/oracle.mjs",
-    "test:unit": "node test/unittest.mjs",
-    "test:end-to-end": "node test/selftest.mjs",
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "test:unit": "node --test \"test/unit/**/*.test.mjs\"",
+    "test:disk": "node --test \"test/disk/**/*.test.mjs\"",
+    "test:cli": "node --test \"test/cli/**/*.test.mjs\"",
+    "test:contract": "node --test \"test/contract/**/*.test.mjs\"",
+    "test:oracle": "node --test \"test/oracle/**/*.test.mjs\"",
     "lint": "eslint .",
-    "coverage": "node --experimental-test-coverage --test test/coverage.mjs",
-    "coverage:check": "node --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=80 --test-coverage-functions=99 --test test/coverage.mjs",
-    "prepublishOnly": "npm run lint && npm test",
-    "test:against-exiftool": "node test/oracle.mjs"
+    "coverage": "node --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test \"test/**/*.test.mjs\"",
+    "coverage:badges": "node --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-reporter=lcov --test \"test/**/*.test.mjs\" | node .github/scripts/coverageBadges.mjs coverage/badges",
+    "coverage:check": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=90 --test-coverage-exclude=\"test/**\" --test \"test/**/*.test.mjs\"",
+    "prepublishOnly": "npm run lint && npm test"
   },
   "keywords": [
     "photo",

@@ -1,10 +1,10 @@
 {
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "_comment": "The half of the program the unit suite cannot reach, because its job is the disk and the command line. Mutated against the end to end suite, which is slower but is the only one that runs these at all. See stryker.config.json for the rest.",
+  "_comment": "The half of the program the unit suite cannot reach, because its job is the disk and the command line. Mutated against the disk and command line suites, which are slower but are the only ones that run these at all. See stryker.config.json for the rest.",
   "packageManager": "npm",
   "testRunner": "command",
   "commandRunner": {
-    "command": "node test/selftest.mjs"
+    "command": "node test/runUntilTheFirstFailure.mjs disk cli contract/catalogue.test.mjs contract/documentation.test.mjs"
   },
   "mutate": [
     "src/apply.mjs",

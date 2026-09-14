@@ -6,8 +6,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WHAT_TO_DO, decideWhatToDo } from '../cli/options.mjs';
-import { progressLineFor } from '../cli/progress.mjs';
-import { fileAsItIsPlaced, reportAsJson, reportForATerminal } from '../cli/report.mjs';
+import { whileShowingProgress } from '../cli/progress.mjs';
+import {
+  fileAsItIsPlaced, reportAsJson, reportForATerminal, stopOnceNobodyIsReading,
+} from '../cli/report.mjs';
 import { EXIT_CODE, PROGRAM_NAME, USAGE_IN_BRIEF, USAGE_IN_FULL } from '../cli/usage.mjs';
 import { applyPlan } from '../src/apply.mjs';
 import { readTheClockInsideEachFile } from '../src/dating.mjs';
@@ -15,63 +17,45 @@ import { destinationProbeOverTheFilesystem } from '../src/destination.mjs';
 import { buildPlan, countPlacements } from '../src/plan.mjs';
 import { findMediaFiles } from '../src/scan.mjs';
 
-const BROKEN_PIPE_ERROR_CODE = 'EPIPE';
-
 const out = (line) => console.log(line);
 const error = (line) => console.error(line);
 
 function readVersionFromPackageManifest() {
   const binDirectory = path.dirname(fileURLToPath(import.meta.url));
   try {
-    return JSON.parse(fs.readFileSync(path.join(binDirectory, '..', 'package.json'), 'utf8')).version;
+    return JSON.parse(fs.readFileSync(path.join(binDirectory, '..', 'package.json'))).version;
   } catch {
     return 'unknown';
   }
 }
 
-function directoriesAmong(inputPaths) {
-  return inputPaths.filter((inputPath) => {
-    try {
-      return fs.statSync(inputPath).isDirectory();
-    } catch {
-      return false;
-    }
-  });
-}
-
-function placeEveryFile(plan, options) {
-  const progress = progressLineFor(plan.placements, options, process.stderr);
-  try {
-    return applyPlan(plan.placements, {
-      moveInsteadOfCopying: options.moveInsteadOfCopying,
-      directoriesToTidy: directoriesAmong(options.inputPaths),
-      onFileStarted: progress.startedOn,
-      onBytesWritten: progress.bytesWrittenTo,
-      onFileFinished: progress.finishedWith,
-      onFilePlaced: options.verbose
-        ? (entry) => {
-          const line = fileAsItIsPlaced(entry, options.moveInsteadOfCopying);
-          if (line !== null) progress.printAbove(() => out(line));
-        }
-        : null,
-    });
-  } finally {
-    progress.finish();
-  }
-}
+const placeEveryFile = (plan, options) => whileShowingProgress(plan.placements, options, process.stderr, (progress) =>
+  applyPlan(plan.placements, {
+    moveInsteadOfCopying: options.moveInsteadOfCopying,
+    directoriesToTidy: options.inputPaths,
+    onFileStarted: progress.startedOn,
+    onBytesWritten: progress.bytesWrittenTo,
+    onFileFinished: progress.finishedWith,
+    onFilePlaced: options.verbose
+      ? (entry) => {
+        const line = fileAsItIsPlaced(entry, options.moveInsteadOfCopying);
+        if (line !== null) progress.printAbove(() => out(line));
+      }
+      : null,
+  }));
 
 function sort(options) {
   let candidateFiles;
   try {
     candidateFiles = findMediaFiles(options.inputPaths);
   } catch (folderCouldNotBeRead) {
-    error(`${PROGRAM_NAME}: ${folderCouldNotBeRead.path ?? ''}: ${folderCouldNotBeRead.code ?? folderCouldNotBeRead.message}`);
+    error(`${PROGRAM_NAME}: ${folderCouldNotBeRead.path}: ${folderCouldNotBeRead.code ?? folderCouldNotBeRead.message}`);
     return EXIT_CODE.somethingFailedOrNothingFound;
   }
 
   const emptyPlan = { placements: [], filesystemDateUseCounts: { filesDatedByTheFilesystem: 0, filesLeftUndated: 0 }, namesSplitIntoSubfolders: 0 };
   if (candidateFiles.length === 0) {
-    if (options.json) reportAsJson({ plan: emptyPlan, outcome: countPlacements([]), fileCount: 0, options }, { out });
+    if (options.json) reportAsJson({ plan: emptyPlan, outcome: countPlacements(emptyPlan.placements), fileCount: 0, options }, { out });
     else error(`${PROGRAM_NAME}: no photos or video found`);
     return EXIT_CODE.somethingFailedOrNothingFound;
   }
@@ -98,11 +82,7 @@ function sort(options) {
 // than the buffer that stream holds, so exiting on the spot loses the end of it to
 // anything that captures the output rather than showing it.
 function main() {
-  process.stdout.on('error', (streamError) => {
-    // Nobody is reading any more, so there is nothing left to flush and nothing to wait
-    // for: this is the one place stopping on the spot is the right thing to do.
-    if (streamError.code === BROKEN_PIPE_ERROR_CODE) process.exit(EXIT_CODE.everythingPlaced);
-  });
+  stopOnceNobodyIsReading(process.stdout, process.exit);
 
   const decision = decideWhatToDo(process.argv.slice(2));
 

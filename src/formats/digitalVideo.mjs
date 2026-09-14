@@ -67,13 +67,11 @@ export function readCameraClockFromDigitalVideo(byteSource) {
   for (let blockIndex = 1; blockIndex < BLOCKS_AT_THE_START_THAT_CARRY_PACKS; blockIndex++) {
     const blockStart = blockIndex * BYTES_IN_A_DV_BLOCK;
     const blockKind = readUInt8At(byteSource, blockStart);
-    if (blockKind === null) return null;
     if ((blockKind & WHICH_KIND_OF_BLOCK_IT_IS) !== AUXILIARY_BLOCK_MARK) continue;
 
     for (let packIndex = 0; packIndex < PACKS_PER_BLOCK; packIndex++) {
       const packStart = blockStart + BYTES_FROM_A_BLOCK_START_TO_ITS_PACKS + packIndex * BYTES_PER_PACK;
       const packKind = readUInt8At(byteSource, packStart);
-      if (packKind === null) return null;
 
       if (packKind === RECORDING_DATE_PACK) {
         recordingDate = recordingDateInPack(byteSource, packStart);

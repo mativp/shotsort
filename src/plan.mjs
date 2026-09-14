@@ -72,7 +72,6 @@ function numberTheFilesThatShareANameWithADifferentPhoto(filesInShootingOrder, p
   let namesSplitIntoSubfolders = 0;
 
   for (const filesSharingADayAndName of filesOfEachDayAndName.values()) {
-    if (filesSharingADayAndName.length === 1) continue;
     const variants = distinctVariantsAmong(filesSharingADayAndName, probe);
     if (variants.length === 1) continue;
 
@@ -148,7 +147,7 @@ function choosePlacements(filesInShootingOrder, probe) {
 
   return filesInShootingOrder.map((file) => {
     const { targetPath, placement } = chooseTargetPath(file, filesClaimingEachTarget, probe);
-    if (targetPath !== null) filesClaimingEachTarget.set(targetPath, file);
+    filesClaimingEachTarget.set(targetPath, file);
 
     return Object.freeze({
       sourcePath: file.path,

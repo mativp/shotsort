@@ -20,7 +20,6 @@ const HIGHEST_BIT_OF_A_BYTE = 0x80;
 // value, because that is how the specification writes ids down; a length drops it.
 function readWidthMarkedNumberAt(byteSource, position, widestAllowed, keepTheMarkerBit) {
   const firstByte = readUInt8At(byteSource, position);
-  if (firstByte === null || firstByte === 0) return null;
 
   let width = 1;
   while (width <= widestAllowed && (firstByte & (HIGHEST_BIT_OF_A_BYTE >> (width - 1))) === 0) width++;
@@ -53,7 +52,6 @@ function findElement(byteSource, searchStart, searchEnd, wantedId) {
     const contentStart = elementStart + id.width + length.width;
     const contentEnd = length.meansUnknownLength ? searchEnd : Math.min(contentStart + length.value, searchEnd);
     if (id.value === wantedId) return { contentStart, contentEnd };
-    if (contentEnd <= elementStart) return null;
     elementStart = contentEnd;
   }
   return null;

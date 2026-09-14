@@ -73,27 +73,20 @@ export function byteOrderAt(byteSource, position) {
 
 function readTiffDirectoryEntries(byteSource, tiffStart, directoryStart, isLittleEndian, layout) {
   const entryCount = layout.readEntryCount(byteSource, directoryStart, isLittleEndian);
-  if (entryCount === null || entryCount === 0 || entryCount > MOST_ENTRIES_A_REAL_DIRECTORY_HAS) return [];
+  const entriesWorthReading = entryCount > MOST_ENTRIES_A_REAL_DIRECTORY_HAS ? 0 : entryCount;
 
-  const entries = [];
-  for (let entryIndex = 0; entryIndex < entryCount; entryIndex++) {
+  return Array.from({ length: entriesWorthReading }, (notReadFromTheArray, entryIndex) => {
     const entryStart = directoryStart + layout.bytesInEntryCountField + entryIndex * layout.bytesPerDirectoryEntry;
     const valueFieldStart = entryStart + layout.bytesFromEntryStartToValueField;
-    const tag = readUInt16At(byteSource, entryStart, isLittleEndian);
     const valueType = readUInt16At(byteSource, entryStart + 2, isLittleEndian);
-    const valueCount = layout.readValueCount(byteSource, entryStart + 4, isLittleEndian);
-    if (tag === null || valueCount === null) break;
-
     const bytesPerValue = BYTES_PER_TIFF_VALUE_TYPE[valueType] ?? BYTES_PER_UNKNOWN_TIFF_VALUE_TYPE;
-    const valueSizeInBytes = bytesPerValue * valueCount;
+    const valueSizeInBytes = bytesPerValue * layout.readValueCount(byteSource, entryStart + 4, isLittleEndian);
     const valueIsStoredInsideTheEntry = valueSizeInBytes <= layout.largestValueStoredInsideAnEntry;
     const valueStart = valueIsStoredInsideTheEntry
       ? valueFieldStart
       : tiffStart + layout.readOffset(byteSource, valueFieldStart, isLittleEndian);
-
-    entries.push({ tag, valueType, valueStart, valueSizeInBytes });
-  }
-  return entries;
+    return { tag: readUInt16At(byteSource, entryStart, isLittleEndian), valueType, valueStart, valueSizeInBytes };
+  });
 }
 
 function readAsciiEntry(byteSource, entry) {
@@ -125,9 +118,7 @@ export function readCameraClockFromTiff(byteSource, tiffStart, { readEmbeddedJpe
   if (byteOrder === null) return null;
   const { isLittleEndian } = byteOrder;
 
-  const signature = readUInt16At(byteSource, tiffStart + TIFF_SIGNATURE_POSITION, isLittleEndian);
-  if (signature === null) return null;
-  const isBigTiff = signature === BIG_TIFF_SIGNATURE;
+  const isBigTiff = readUInt16At(byteSource, tiffStart + TIFF_SIGNATURE_POSITION, isLittleEndian) === BIG_TIFF_SIGNATURE;
 
   const layout = isBigTiff ? BIG_TIFF_DIRECTORY_LAYOUT : ORDINARY_TIFF_DIRECTORY_LAYOUT;
   const offsetsAreEightBytesWide = !isBigTiff
@@ -137,16 +128,15 @@ export function readCameraClockFromTiff(byteSource, tiffStart, { readEmbeddedJpe
   const firstDirectoryOffset = isBigTiff
     ? readUInt64EitherWayRoundAt(byteSource, tiffStart + BIG_TIFF_FIRST_DIRECTORY_POINTER_POSITION, isLittleEndian)
     : readUInt32At(byteSource, tiffStart + TIFF_FIRST_DIRECTORY_POINTER_POSITION, isLittleEndian);
-  if (firstDirectoryOffset === null || firstDirectoryOffset < BYTES_IN_A_TIFF_HEADER) return null;
+  const theFirstDirectoryStartsAfterTheHeader = firstDirectoryOffset >= BYTES_IN_A_TIFF_HEADER;
+  if (!theFirstDirectoryStartsAfterTheHeader) return null;
 
   const mainEntries = readTiffDirectoryEntries(byteSource, tiffStart, tiffStart + firstDirectoryOffset, isLittleEndian, layout);
   const exifDirectoryPointer = mainEntries.find((entry) => entry.tag === TIFF_TAG_EXIF_DIRECTORY_POINTER) ?? null;
   const exifDirectoryOffset = exifDirectoryPointer === null
     ? null
     : readPointerHeldBy(byteSource, exifDirectoryPointer, isLittleEndian, layout);
-  const exifEntries = exifDirectoryOffset === null
-    ? []
-    : readTiffDirectoryEntries(byteSource, tiffStart, tiffStart + exifDirectoryOffset, isLittleEndian, layout);
+  const exifEntries = readTiffDirectoryEntries(byteSource, tiffStart, tiffStart + exifDirectoryOffset, isLittleEndian, layout);
 
   const dateEntriesInPreferenceOrder = [
     findEntry(exifEntries, TIFF_TAG_DATE_TIME_ORIGINAL, TIFF_VALUE_TYPE_ASCII),
@@ -157,13 +147,11 @@ export function readCameraClockFromTiff(byteSource, tiffStart, { readEmbeddedJpe
   ];
   for (const entry of dateEntriesInPreferenceOrder) {
     if (entry === null) continue;
-    const clock = cameraClockFromExifText(readAsciiEntry(byteSource, entry) ?? '');
+    const clock = cameraClockFromExifText(readAsciiEntry(byteSource, entry));
     if (clock !== null) return clock;
   }
 
   if (readEmbeddedJpeg === null) return null;
-  const embeddedJpeg = mainEntries.find(
-    (entry) => entry.tag === TIFF_TAG_JPEG_FROM_RAW && entry.valueSizeInBytes > layout.largestValueStoredInsideAnEntry,
-  );
+  const embeddedJpeg = mainEntries.find((entry) => entry.tag === TIFF_TAG_JPEG_FROM_RAW);
   return embeddedJpeg === undefined ? null : readEmbeddedJpeg(byteSource, embeddedJpeg.valueStart);
 }

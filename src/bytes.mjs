@@ -3,20 +3,21 @@
 // can be tested against bytes a camera would write without those bytes reaching a disk.
 import fs from 'node:fs';
 
+const isAPlaceInAFile = (position) => Number.isInteger(position) && position >= 0;
+
 export function byteSourceForFileDescriptor(fileDescriptor, sizeInBytes) {
   return {
     sizeInBytes,
-    readInto: (buffer, position, byteCount) => fs.readSync(fileDescriptor, buffer, 0, byteCount, position),
+    readInto: (buffer, position, byteCount) =>
+      (isAPlaceInAFile(position) ? fs.readSync(fileDescriptor, buffer, 0, byteCount, position) : 0),
   };
 }
 
 export function byteSourceForBuffer(buffer) {
   return {
     sizeInBytes: buffer.length,
-    readInto: (into, position, byteCount) => {
-      if (position < 0 || position >= buffer.length) return 0;
-      return buffer.copy(into, 0, position, Math.min(position + byteCount, buffer.length));
-    },
+    readInto: (into, position, byteCount) =>
+      (isAPlaceInAFile(position) ? buffer.subarray(position, position + byteCount).copy(into) : 0),
   };
 }
 

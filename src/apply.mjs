@@ -59,7 +59,7 @@ function copyContents(filesystem, entry, reportBytesWritten) {
 function moveFile(filesystem, entry, reportBytesWritten) {
   const { sourcePath, targetPath } = entry;
   if (filesystem.existsSync(targetPath)) {
-    throw Object.assign(new Error('target appeared after the plan was made'), { code: 'EEXIST' });
+    throw Object.assign(new Error(), { code: 'EEXIST' });
   }
   try {
     filesystem.renameSync(sourcePath, targetPath);
@@ -97,14 +97,11 @@ function removeEmptyDirectoriesUnder(filesystem, directory, isTheDirectoryTheUse
   if (isTheDirectoryTheUserNamed) return directoriesRemoved;
 
   try {
-    if (filesystem.readdirSync(directory).length === 0) {
-      filesystem.rmdirSync(directory);
-      directoriesRemoved++;
-    }
+    filesystem.rmdirSync(directory);
+    return directoriesRemoved + 1;
   } catch {
     return directoriesRemoved;
   }
-  return directoriesRemoved;
 }
 
 function carryOutOnePlacement(entry, outcome, { moveInsteadOfCopying, onFilePlaced, onBytesWritten, filesystem }) {
@@ -140,7 +137,7 @@ function carryOutOnePlacement(entry, outcome, { moveInsteadOfCopying, onFilePlac
 // Failures come back as the path and the reason, not as a finished sentence: how to word
 // them for a terminal is the command line's business, not this module's.
 export function applyPlan(placements, {
-  moveInsteadOfCopying = false, directoriesToTidy = [],
+  moveInsteadOfCopying = false, directoriesToTidy,
   onFileStarted = null, onFilePlaced = null, onBytesWritten = null, onFileFinished = null, filesystem = fs,
 } = {}) {
   const outcome = {

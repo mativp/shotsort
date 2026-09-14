@@ -18,8 +18,6 @@ export const WHAT_TO_DO = {
   refuse: 'refuse',
 };
 
-const SHORT_OPTIONS_THAT_TAKE_A_VALUE = new Set(['s', 'd']);
-
 const sort = (options) => ({ whatToDo: WHAT_TO_DO.sort, options });
 const printTheUsageInBrief = () => ({ whatToDo: WHAT_TO_DO.printTheUsageInBrief });
 const printTheUsageInFull = () => ({ whatToDo: WHAT_TO_DO.printTheUsageInFull });
@@ -35,62 +33,63 @@ class TheCommandLineWasWrong extends Error {
 
 class NothingToDoButPrint extends Error {
   constructor(result) {
-    super('nothing to do but print');
+    super();
     this.result = result;
   }
 }
+
+export const OPTIONS = [
+  { short: '-s', long: '--source', takes: 'FOLDER', apply: (options, folder) => options.inputPaths.push(folder) },
+  { short: '-d', long: '--dest', takes: 'FOLDER', apply: (options, folder) => { options.destination = folder; } },
+  { short: '-n', long: '--dry-run', apply: (options) => { options.dryRun = true; } },
+  { short: '-m', long: '--move', apply: (options) => { options.moveInsteadOfCopying = true; } },
+  { long: '--layout', takes: 'FORMAT', apply: (options, layout) => { options.layout = layout; } },
+  { long: '--day-start', takes: 'HOUR', apply: (options, hour) => { options.hourTheDayStartsAt = Number(hour); } },
+  {
+    long: '--use-filesystem-date',
+    apply: (options) => { options.filesystemDateUse = FILESYSTEM_DATE_USE.always; },
+  },
+  {
+    long: '--ignore-filesystem-date',
+    apply: (options) => { options.filesystemDateUse = FILESYSTEM_DATE_USE.never; },
+  },
+  { short: '-v', long: '--verbose', apply: (options) => { options.verbose = true; } },
+  { short: '-q', long: '--quiet', apply: (options) => { options.quiet = true; } },
+  { long: '--json', apply: (options) => { options.json = true; } },
+  { short: '-h', long: '--help', apply: () => { throw new NothingToDoButPrint(printTheUsageInFull()); } },
+  { short: '-V', long: '--version', apply: () => { throw new NothingToDoButPrint(printVersion()); } },
+];
+
+const optionNamed = (name) => OPTIONS.find((option) => option.short === name || option.long === name);
 
 function parseEveryArgument(commandLineArguments, options) {
   let everythingLeftIsAPath = false;
   let argumentIndex = 0;
 
-  const nextArgumentAsValue = (optionName) => {
+  const applyOption = (nameAsTyped) => {
+    const option = optionNamed(nameAsTyped);
+    if (option === undefined) throw new TheCommandLineWasWrong(`unrecognised option '${nameAsTyped}'`);
+    if (option.takes === undefined) {
+      option.apply(options);
+      return;
+    }
     argumentIndex++;
-    if (argumentIndex >= commandLineArguments.length) throw new TheCommandLineWasWrong(`option '${optionName}' needs a value`);
-    return commandLineArguments[argumentIndex];
-  };
-
-  const applyShortOption = (letter) => {
-    if (letter === 'n') options.dryRun = true;
-    else if (letter === 'm') options.moveInsteadOfCopying = true;
-    else if (letter === 'v') options.verbose = true;
-    else if (letter === 'q') options.quiet = true;
-    else if (letter === 'd') options.destination = nextArgumentAsValue('-d');
-    else if (letter === 's') options.inputPaths.push(nextArgumentAsValue('-s'));
-    else if (letter === 'h') throw new NothingToDoButPrint(printTheUsageInFull());
-    else if (letter === 'V') throw new NothingToDoButPrint(printVersion());
-    else throw new TheCommandLineWasWrong(`unrecognised option '-${letter}'`);
+    if (argumentIndex >= commandLineArguments.length) throw new TheCommandLineWasWrong(`option '${nameAsTyped}' needs a value`);
+    option.apply(options, commandLineArguments[argumentIndex]);
   };
 
   const applyClusteredShortOptions = (cluster) => {
     const letters = cluster.slice(1);
     for (let position = 0; position < letters.length; position++) {
-      const letter = letters[position];
+      const shortName = `-${letters[position]}`;
       const isTheLastLetter = position === letters.length - 1;
-      if (SHORT_OPTIONS_THAT_TAKE_A_VALUE.has(letter) && !isTheLastLetter) {
+      if (optionNamed(shortName)?.takes !== undefined && !isTheLastLetter) {
         throw new TheCommandLineWasWrong(
-          `option '-${letter}' takes a value, so it has to be the last letter of '${cluster}'`,
+          `option '${shortName}' takes a value, so it has to be the last letter of '${cluster}'`,
         );
       }
-      applyShortOption(letter);
+      applyOption(shortName);
     }
-  };
-
-  const applyLongOption = (optionName) => {
-    if (optionName === '--dry-run') options.dryRun = true;
-    else if (optionName === '--move') options.moveInsteadOfCopying = true;
-    else if (optionName === '--verbose') options.verbose = true;
-    else if (optionName === '--quiet') options.quiet = true;
-    else if (optionName === '--json') options.json = true;
-    else if (optionName === '--use-filesystem-date') options.filesystemDateUse = FILESYSTEM_DATE_USE.always;
-    else if (optionName === '--ignore-filesystem-date') options.filesystemDateUse = FILESYSTEM_DATE_USE.never;
-    else if (optionName === '--dest') options.destination = nextArgumentAsValue(optionName);
-    else if (optionName === '--source') options.inputPaths.push(nextArgumentAsValue(optionName));
-    else if (optionName === '--layout') options.layout = nextArgumentAsValue(optionName);
-    else if (optionName === '--day-start') options.hourTheDayStartsAt = Number(nextArgumentAsValue(optionName));
-    else if (optionName === '--help') throw new NothingToDoButPrint(printTheUsageInFull());
-    else if (optionName === '--version') throw new NothingToDoButPrint(printVersion());
-    else throw new TheCommandLineWasWrong(`unrecognised option '${optionName}'`);
   };
 
   for (; argumentIndex < commandLineArguments.length; argumentIndex++) {
@@ -101,7 +100,7 @@ function parseEveryArgument(commandLineArguments, options) {
     } else if (argument === '--') {
       everythingLeftIsAPath = true;
     } else if (argument.startsWith('--')) {
-      applyLongOption(argument);
+      applyOption(argument);
     } else {
       applyClusteredShortOptions(argument);
     }
