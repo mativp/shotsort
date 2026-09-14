@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  riffChunk, riffDateCreatedChunk, riffExifChunk, riffFile, riffJunkChunks, riffListsNested, riffRecordingDateChunk,
+  riffChunk, riffDateCreatedChunk, riffExifChunk, riffFile, riffJunkChunks, riffList, riffListsNested, riffRecordingDateChunk,
 } from '../../fixtures/riff.mjs';
+import { TIFF_STANDARD_SIGNATURE, tiffFile } from '../../fixtures/tiff.mjs';
 import { clockTextInside } from '../../support/inMemory.mjs';
 
 const RECORDED = 'Thu Aug 27 10:40:00 2026';
@@ -48,6 +49,10 @@ test('the chunks a RIFF file is walked through', async (context) => {
 
 test('the Exif chunk a RIFF file may carry', async (context) => {
   const shotAt = '2026:08:27 10:41:00';
+  const anEmptyExifChunkEndingItsList = riffList('hdrl', [riffChunk('avih', Buffer.alloc(8)), riffChunk('EXIF', Buffer.alloc(0))]);
+  const aTiffRightAfterTheList = tiffFile({ signature: TIFF_STANDARD_SIGNATURE, dateTimeOriginal: shotAt });
+  await context.test('holding nothing at the end of its list, is not read from the bytes that follow the list',
+    () => assert.equal(aviHolding(anEmptyExifChunkEndingItsList, aTiffRightAfterTheList), null));
   await context.test('is read under its lower-case name too',
     () => assert.equal(aviHolding(riffExifChunk(shotAt, { chunkType: 'exif' })), '2026-08-27 10:41:00'));
   await context.test('and when it starts straight at the TIFF byte order mark, with no Exif header',

@@ -6,7 +6,8 @@ import { jpegFile } from '../fixtures/jpeg.mjs';
 import { movieFile } from '../fixtures/quicktime.mjs';
 import { NO_FREE_NAME_IN_THE_DAY_FOLDER, PLACEMENT } from '../../src/plan.mjs';
 import { applyPlan } from '../../src/apply.mjs';
-import { aDirectoryHolding } from '../support/temporaryDirectories.mjs';
+import { aDirectoryHolding, aTemporaryDirectory } from '../support/temporaryDirectories.mjs';
+import { THE_PLATFORM_LETS_ANYONE_MAKE_A_SYMBOLIC_LINK } from '../support/platform.mjs';
 import { writeFixtureFile } from '../support/files.mjs';
 
 // Every way carrying out a plan can go wrong, which is the half of the program a real disk
@@ -349,5 +350,20 @@ test('tidying up folders it cannot read', async (context) => {
   await context.test('a copy run tidies nothing, every original still being where it was', () => assert.equal(
     applyPlan([], { moveInsteadOfCopying: false, directoriesToTidy: [disk] }).emptyDirectoriesRemoved,
     0,
+  ));
+});
+
+test('tidying up a folder holding a link to another', {
+  skip: !THE_PLATFORM_LETS_ANYONE_MAKE_A_SYMBOLIC_LINK && 'this platform does not let an ordinary account make a symbolic link',
+}, async (context) => {
+  const card = aTemporaryDirectory('tidying-a-link');
+  const elsewhere = aDirectoryHolding('linked-to', {});
+  fs.mkdirSync(path.join(elsewhere, 'an-empty-folder'));
+  fs.symlinkSync(elsewhere, path.join(card, 'a-link'), 'dir');
+
+  const tidied = applyPlan([], { moveInsteadOfCopying: true, directoriesToTidy: [card] });
+  await context.test('the link is not followed, so an empty folder outside the card is left where it was', () => assert.ok(
+    tidied.emptyDirectoriesRemoved === 0 && fs.existsSync(path.join(elsewhere, 'an-empty-folder')),
+    JSON.stringify(tidied),
   ));
 });

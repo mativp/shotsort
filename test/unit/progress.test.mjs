@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLACEMENT } from '../../src/plan.mjs';
-import { aProgressLineBelongsOn, progressLineFor, progressLineText } from '../../cli/progress.mjs';
+import { aProgressLineBelongsOn, progressLineFor, progressLineText, whileShowingProgress } from '../../cli/progress.mjs';
 import { asThisPlatformSpellsIt } from '../support/inMemory.mjs';
 
 const BYTES_IN_A_MEGABYTE = 1024 * 1024;
@@ -290,4 +290,26 @@ test('the progress line as the files go by', async (context) => {
   verbose.finish();
   await context.test('a --verbose line is printed as it is while no progress line is up, and the line steps aside for it once one is',
     () => assert.equal(whatHappened.join(', '), 'printed, drawn, taken down, printed, drawn, taken down'));
+});
+
+test('the progress line once the writing is over', async (context) => {
+  const photo = aPlacementOf('P1.JPG', BYTES_IN_A_MEGABYTE);
+  const lastWriteErasedTheLine = (terminal) => terminal.written.at(-1) === `${RETURN_TO_THE_START_OF_THE_LINE}${ERASE_TO_THE_END_OF_THE_LINE}`;
+
+  const finishedNormally = aTerminalWatching();
+  const handedBack = whileShowingProgress([photo], copying, finishedNormally, (progress) => {
+    progress.startedOn(photo);
+    return 'what the writing gave';
+  });
+  await context.test('is erased once every file is written, and what the writing gave is handed back',
+    () => assert.deepEqual([lastWriteErasedTheLine(finishedNormally), handedBack], [true, 'what the writing gave']));
+
+  const stoppedByAnError = aTerminalWatching();
+  await context.test('and erased too when an error stops the writing, the error still reaching whoever called it', () => {
+    assert.throws(() => whileShowingProgress([photo], copying, stoppedByAnError, (progress) => {
+      progress.startedOn(photo);
+      throw new Error('the disk went away');
+    }), /the disk went away/);
+    assert.equal(lastWriteErasedTheLine(stoppedByAnError), true);
+  });
 });

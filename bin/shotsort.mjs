@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WHAT_TO_DO, decideWhatToDo } from '../cli/options.mjs';
-import { progressLineFor } from '../cli/progress.mjs';
+import { whileShowingProgress } from '../cli/progress.mjs';
 import { fileAsItIsPlaced, reportAsJson, reportForATerminal } from '../cli/report.mjs';
 import { EXIT_CODE, PROGRAM_NAME, USAGE_IN_BRIEF, USAGE_IN_FULL } from '../cli/usage.mjs';
 import { applyPlan } from '../src/apply.mjs';
@@ -29,26 +29,20 @@ function readVersionFromPackageManifest() {
   }
 }
 
-function placeEveryFile(plan, options) {
-  const progress = progressLineFor(plan.placements, options, process.stderr);
-  try {
-    return applyPlan(plan.placements, {
-      moveInsteadOfCopying: options.moveInsteadOfCopying,
-      directoriesToTidy: options.inputPaths,
-      onFileStarted: progress.startedOn,
-      onBytesWritten: progress.bytesWrittenTo,
-      onFileFinished: progress.finishedWith,
-      onFilePlaced: options.verbose
-        ? (entry) => {
-          const line = fileAsItIsPlaced(entry, options.moveInsteadOfCopying);
-          if (line !== null) progress.printAbove(() => out(line));
-        }
-        : null,
-    });
-  } finally {
-    progress.finish();
-  }
-}
+const placeEveryFile = (plan, options) => whileShowingProgress(plan.placements, options, process.stderr, (progress) =>
+  applyPlan(plan.placements, {
+    moveInsteadOfCopying: options.moveInsteadOfCopying,
+    directoriesToTidy: options.inputPaths,
+    onFileStarted: progress.startedOn,
+    onBytesWritten: progress.bytesWrittenTo,
+    onFileFinished: progress.finishedWith,
+    onFilePlaced: options.verbose
+      ? (entry) => {
+        const line = fileAsItIsPlaced(entry, options.moveInsteadOfCopying);
+        if (line !== null) progress.printAbove(() => out(line));
+      }
+      : null,
+  }));
 
 function sort(options) {
   let candidateFiles;
@@ -90,8 +84,9 @@ function sort(options) {
 function main() {
   process.stdout.on('error', (streamError) => {
     // Nobody is reading any more, so there is nothing left to flush and nothing to wait
-    // for: this is the one place stopping on the spot is the right thing to do.
-    if (streamError.code === BROKEN_PIPE_ERROR_CODE) process.exit(EXIT_CODE.everythingPlaced);
+    // for: this is the one place stopping on the spot is the right thing to do. The error
+    // arrives once the run is over, so the exit code it set still stands.
+    if (streamError.code === BROKEN_PIPE_ERROR_CODE) process.exit();
   });
 
   const decision = decideWhatToDo(process.argv.slice(2));

@@ -198,4 +198,12 @@ test('output cut off by something reading it', {
     () => assert.equal(pipeline.status, EXIT_CODE.everythingPlaced));
   await context.test('and nothing is said about the broken pipe',
     () => assert.doesNotMatch(pipeline.stderr ?? '', /EPIPE/));
+
+  const aLibraryWhoseDayFolderIsAFile = aTemporaryDirectory('cut-off-library');
+  fs.writeFileSync(path.join(aLibraryWhoseDayFolderIsAFile, '2026-08-27'), '');
+  const failingPipeline = spawnSync('bash', ['-c',
+    `set -o pipefail; ${JSON.stringify(process.execPath)} ${JSON.stringify(COMMAND)} --json -d ${JSON.stringify(aLibraryWhoseDayFolderIsAFile)} ${JSON.stringify(dump)} | head -1`],
+  { encoding: 'utf8' });
+  await context.test('but a run whose files failed still says so when its output is cut off',
+    () => assert.equal(failingPipeline.status, EXIT_CODE.somethingFailedOrNothingFound));
 });

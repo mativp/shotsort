@@ -14,6 +14,7 @@ const BYTES_IN_AN_ASF_OBJECT_SIZE = 8;
 const BYTES_IN_AN_ASF_OBJECT_HEADER = BYTES_IN_AN_ASF_OBJECT_ID + BYTES_IN_AN_ASF_OBJECT_SIZE;
 const BYTES_FROM_THE_HEADER_OBJECT_START_TO_ITS_CHILDREN = BYTES_IN_AN_ASF_OBJECT_HEADER + 4 + 2;
 const BYTES_FROM_FILE_PROPERTIES_START_TO_THE_CREATION_DATE = BYTES_IN_AN_ASF_OBJECT_HEADER + 16 + 8;
+const BYTES_IN_A_CREATION_DATE = 8;
 const MOST_OBJECTS_A_REAL_HEADER_HAS = 256;
 
 export const startsWithAnAsfHeaderObject = (byteSource) =>
@@ -33,6 +34,8 @@ export function readCameraClockFromAsf(byteSource) {
     if (objectSize < BYTES_IN_AN_ASF_OBJECT_HEADER) return null;
 
     if (objectId === ASF_FILE_PROPERTIES_OBJECT_ID) {
+      const creationDateEnd = objectStart + BYTES_FROM_FILE_PROPERTIES_START_TO_THE_CREATION_DATE + BYTES_IN_A_CREATION_DATE;
+      if (creationDateEnd > Math.min(objectStart + objectSize, headerEnd)) return null;
       const hundredNanoseconds = readUInt64EitherWayRoundAt(
         byteSource, objectStart + BYTES_FROM_FILE_PROPERTIES_START_TO_THE_CREATION_DATE, true,
       );

@@ -39,6 +39,21 @@ test('the directory the header of a Redcode clip counts its way to', async (cont
   await context.test('a directory counted to that ends exactly where the file does is trusted', () => assert.equal(countedTo(aDirectoryOfLength(300)), SHOT));
   await context.test('and one claiming to run a byte past it is not',
     () => assert.equal(countedTo(aDirectoryOfLength(300), { declaredDirectoryLength: 301 }), THE_DECOY_SAYS));
+  const digitsOf = (cameraClock) => Buffer.from(redcodeRunOfDigits(cameraClock), 'latin1');
+  const endingTheDirectory = (dateRecordBytes) => [
+    redcodeRecord(0x1019, Buffer.alloc(300 - dateRecordBytes - 4)),
+  ];
+  const aDateRecordWithNoTerminator = redcodeRecord(0x1005, digitsOf(SHOT));
+  await context.test('a date record whose digits end exactly where the counted directory does is read whole', () => assert.equal(
+    countedTo([...endingTheDirectory(aDateRecordWithNoTerminator.length), aDateRecordWithNoTerminator]),
+    SHOT,
+  ));
+  await context.test('and one whose header ends the counted directory is not read from the digits past its end', () => assert.equal(
+    countedTo([...endingTheDirectory(4), aDateRecordWithNoTerminator.subarray(0, 4)], {
+      declaredDirectoryLength: 300, recordsAfterTheDirectory: [aDateRecordWithNoTerminator.subarray(4)],
+    }),
+    THE_DECOY_SAYS,
+  ));
   await context.test('a date record just past the end of the directory counted to is not taken from it', () => assert.equal(
     readFrom([redcodeTimecodeRecord()], {
       recordCountsInTheHeader: oneOfEachRecord, bytesBeforeTheDirectory: decoyAmongTheRecords,

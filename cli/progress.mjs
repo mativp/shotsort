@@ -143,3 +143,14 @@ export function progressLineFor(placements, options, terminal, now = Date.now) {
     finish: erase,
   };
 }
+
+// The line is taken away however the writing ends, so an error that stops it part way does
+// not leave a half-drawn bar on the terminal above the message saying why.
+export function whileShowingProgress(placements, options, terminal, writeEveryFile) {
+  const progress = progressLineFor(placements, options, terminal);
+  try {
+    return writeEveryFile(progress);
+  } finally {
+    progress.finish();
+  }
+}

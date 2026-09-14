@@ -82,8 +82,9 @@ function whenItWasShotInDirectory(byteSource, directoryStart, directoryEnd) {
     if (!aRecordWasThereHoldingItsHeader) return null;
 
     if (recordNumber === RECORD_HOLDING_WHEN_IT_WAS_SHOT) {
-      const digits = readTextAt(byteSource, recordStart + BYTES_IN_A_RECORD_HEADER,
-        Math.min(recordLength - BYTES_IN_A_RECORD_HEADER, LONGEST_DATE_RECORD_IN_BYTES));
+      const digitsStart = recordStart + BYTES_IN_A_RECORD_HEADER;
+      const digits = readTextAt(byteSource, digitsStart,
+        Math.min(recordLength - BYTES_IN_A_RECORD_HEADER, directoryEnd - digitsStart, LONGEST_DATE_RECORD_IN_BYTES));
       const parts = WHEN_IT_WAS_SHOT_PATTERN.exec(digits);
       if (parts !== null) {
         return onlyIfPlausible(cameraClockFrom(

@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { asfFilePropertiesObject, asfPaddingObjects, windowsMediaMovieHolding } from '../../fixtures/asf.mjs';
+import { asfFilePropertiesObject, asfObject, asfPaddingObjects, windowsMediaMovieHolding } from '../../fixtures/asf.mjs';
 import { clockTextInside } from '../../support/inMemory.mjs';
 
 const RECORDED = '2026-08-27 10:50:00';
 const MOST_OBJECTS_WALKED = 256;
+const BYTES_IN_AN_OBJECT_HEADER = 24;
 
 const readFrom = (children, layout) => clockTextInside(windowsMediaMovieHolding(children, layout));
 
@@ -29,4 +30,31 @@ test('the objects an ASF header is walked through', async (context) => {
     () => assert.equal(readFrom([claimingLessThanItsHeader, asfFilePropertiesObject(RECORDED)]), null));
   await context.test('file properties after the header object are not looked for',
     () => assert.equal(readFrom([], { afterTheHeader: [asfFilePropertiesObject(RECORDED)] }), null));
+});
+
+test('where an ASF creation date may be read from', async (context) => {
+  const BYTES_TO_THE_END_OF_THE_CREATION_DATE = 56;
+  const propertiesClaiming = (declaredSize, keepingBytes = BYTES_IN_AN_OBJECT_HEADER) => {
+    const properties = Buffer.from(asfFilePropertiesObject(RECORDED).subarray(0, keepingBytes));
+    properties.writeBigUInt64LE(BigInt(declaredSize), 16);
+    return properties;
+  };
+  const whatFollowsTheirHeader = asfFilePropertiesObject(RECORDED).subarray(BYTES_IN_AN_OBJECT_HEADER);
+
+  await context.test('file properties holding nothing but their header, ending the header object, are not read from what follows it', () => assert.equal(
+    readFrom([propertiesClaiming(BYTES_IN_AN_OBJECT_HEADER)], { afterTheHeader: [whatFollowsTheirHeader] }),
+    null,
+  ));
+  await context.test('nor are file properties whose size runs past the end of the header object', () => assert.equal(
+    readFrom([propertiesClaiming(104)], { afterTheHeader: [whatFollowsTheirHeader] }),
+    null,
+  ));
+  await context.test('nor file properties too small to hold a creation date, from the object after them', () => assert.equal(
+    readFrom([propertiesClaiming(BYTES_IN_AN_OBJECT_HEADER), asfObject(Buffer.alloc(16, 1), whatFollowsTheirHeader.subarray(BYTES_IN_AN_OBJECT_HEADER))]),
+    null,
+  ));
+  await context.test('but file properties just large enough to hold their creation date are read', () => assert.equal(
+    readFrom([propertiesClaiming(BYTES_TO_THE_END_OF_THE_CREATION_DATE, BYTES_TO_THE_END_OF_THE_CREATION_DATE)]),
+    RECORDED,
+  ));
 });

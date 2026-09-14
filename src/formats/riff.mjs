@@ -36,7 +36,7 @@ const afterChunk = (chunkStart, chunkLength) =>
 function eachChunkIn(byteSource, searchStart, searchEnd, visit) {
   let chunkStart = searchStart;
   for (let chunkIndex = 0; chunkIndex < MOST_CHUNKS_A_REAL_LIST_HAS; chunkIndex++) {
-    if (chunkStart + BYTES_IN_A_RIFF_CHUNK_HEADER > searchEnd) return null;
+    if (chunkStart + BYTES_IN_A_RIFF_CHUNK_HEADER >= searchEnd) return null;
     const chunkType = readTextAt(byteSource, chunkStart, BYTES_IN_A_RIFF_CHUNK_TYPE);
     const chunkLength = readUInt32At(byteSource, chunkStart + BYTES_IN_A_RIFF_CHUNK_TYPE, true);
 

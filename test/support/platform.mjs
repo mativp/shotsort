@@ -8,3 +8,6 @@ export const THE_FILESYSTEM_HONOURS_PERMISSIONS = process.platform !== 'win32' &
 export const THE_PLATFORM_PIPES_OUTPUT_THE_UNIX_WAY = process.platform !== 'win32';
 
 export const THE_PLATFORM_LISTS_OPEN_FILES_UNDER_DEV_FD = process.platform !== 'win32';
+
+// Making a symbolic link on Windows takes a privilege an ordinary account does not have.
+export const THE_PLATFORM_LETS_ANYONE_MAKE_A_SYMBOLIC_LINK = process.platform !== 'win32';
