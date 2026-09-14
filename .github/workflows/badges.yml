@@ -1,0 +1,39 @@
+name: badges
+
+# The coverage figures the README badges show, written after every push to main. This
+# lives apart from test.yml because the release workflow reuses that one with read-only
+# permissions, and this is the one job that has to write.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: badges
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run coverage:badges
+
+      # The badges branch holds nothing but the latest figures, so it is written afresh
+      # each time rather than grown commit by commit.
+      - name: Publish the figures to the badges branch
+        working-directory: coverage/badges
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git init -q -b badges
+          git add .
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -qm "coverage of ${GITHUB_SHA}"
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges

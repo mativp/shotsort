@@ -2,9 +2,9 @@
 
 [![npm](https://img.shields.io/npm/v/shotsort)](https://www.npmjs.com/package/shotsort)
 [![tests](https://github.com/mativp/shotsort/actions/workflows/test.yml/badge.svg)](https://github.com/mativp/shotsort/actions/workflows/test.yml)
-[![lines](https://img.shields.io/badge/lines-%E2%89%A590%25-brightgreen)](#test)
-[![branches](https://img.shields.io/badge/branches-%E2%89%A590%25-brightgreen)](#test)
-[![functions](https://img.shields.io/badge/functions-%E2%89%A590%25-brightgreen)](#test)
+[![lines](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmativp%2Fshotsort%2Fbadges%2Flines.json)](#test)
+[![branches](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmativp%2Fshotsort%2Fbadges%2Fbranches.json)](#test)
+[![functions](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmativp%2Fshotsort%2Fbadges%2Ffunctions.json)](#test)
 [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#test)
 
 Sort a folder of camera files into one folder per shooting day, using the date
@@ -384,11 +384,11 @@ any suite being touched.
 
 ### What the numbers mean
 
-The figures on the badges are a floor of 90%, enforced by `npm run coverage:check`
-on every pull request. The suite reaches well past it — 99.9% of lines, 99.6% of
-branches and every function of the program as it stands — and the floor is set
-below that on purpose, so that a line or branch counted differently by a different
-Node version turns CI red only when cover is genuinely lost. They are not a target reached by
+The badges show the program's coverage on main, measured again after every push
+to it. `npm run coverage:check` fails a pull request that takes any of the three
+under 90%: well below what the program reaches, on purpose, so that a line or branch
+counted differently by a different Node version turns CI red only when cover is
+genuinely lost. They are not a target reached by
 counting lines: most of the branches in a format reader are the ones that fire on a file
 that went wrong, so the suite cuts every fixture short a byte at a time and reads
 what is left, then puts each of those bytes back as `0x00` and as `0xff` and

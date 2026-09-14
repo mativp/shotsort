@@ -34,7 +34,7 @@ jobs:
       - run: npm test
 
   coverage:
-    # The floors the badges in the README state. They are a floor, not a target: a change
+    # The floors the README states. They are a floor, not a target: a change
     # that adds a branch nothing checks fails here rather than quietly lowering the number.
     # Pinned to the oldest Node the manifest supports, which is where the coverage
     # threshold flags first exist anyway.
